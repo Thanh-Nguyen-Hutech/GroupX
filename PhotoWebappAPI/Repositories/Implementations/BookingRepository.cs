@@ -27,9 +27,24 @@ namespace PhotoWebappAPI.Repositories.Implementations
             await _context.Bookings.AddAsync(booking);
         }
 
-        public async Task SaveChangesAsync()
+
+        public async Task<Booking?> GetByIdAsync(int id)
         {
-            await _context.SaveChangesAsync();
+            return await _context.Bookings.FindAsync(id);
+        }
+
+        public async Task<bool> SaveChangesAsync()
+        {
+            return await _context.SaveChangesAsync() > 0;
+        }
+
+        public async Task<IEnumerable<Booking>> GetAllAsync()
+        {
+            // Lấy hết, bao gồm cả thông tin khách và thợ để hiển thị lịch sử cho đẹp
+            return await _context.Bookings
+                .Include(b => b.Customer)
+                .Include(b => b.Photographer)
+                .ToListAsync();
         }
     }
 }

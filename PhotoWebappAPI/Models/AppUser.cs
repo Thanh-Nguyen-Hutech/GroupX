@@ -8,6 +8,8 @@ namespace PhotoWebappAPI.Models
         public string? Avatar { get; set; }
         public string? Bio { get; set; }
         public string? Address { get; set; }
+        public string? FacebookUrl { get; set; }
+        public bool IsActive { get; set; } = true; // Mặc định tài khoản mới là Active
 
         // Navigation properties
         public ICollection<Booking> CustomerBookings { get; set; } = new List<Booking>();

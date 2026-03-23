@@ -5,7 +5,10 @@ namespace PhotoWebappAPI.Repositories.Interfaces
     public interface IBookingRepository
     {
         Task<IEnumerable<Booking>> GetAllPendingAsync();
+        Task<IEnumerable<Booking>> GetAllAsync();
+        Task<Booking?> GetByIdAsync(int id); // Thêm dòng này
         Task CreateAsync(Booking booking);
-        Task SaveChangesAsync();
+        Task<bool> SaveChangesAsync(); // Thêm dòng này
+
     }
 }

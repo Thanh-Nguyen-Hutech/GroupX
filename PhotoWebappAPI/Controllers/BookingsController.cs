@@ -1,8 +1,11 @@
 ﻿using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.EntityFrameworkCore;
 using PhotoWebappAPI.DTOs.Booking;
-using PhotoWebappAPI.Repositories.Interfaces;
+using PhotoWebappAPI.Models;
+using PhotoWebappAPI.Services.Interfaces;
 using System.Security.Claims;
+using PhotoWebappAPI.Data;
 
 namespace PhotoWebappAPI.Controllers
 {
@@ -44,6 +47,61 @@ namespace PhotoWebappAPI.Controllers
             var requests = await _bookingService.GetRequestsFeedAsync();
             // LƯU Ý: Trong thực tế nên map requests (Entity) ra một DTO khác để không lộ ID dư thừa
             return Ok(requests);
+        }
+
+        [HttpPut("{id}/accept")]
+        [Authorize(Roles = "Photographer")] // CHỈ THỢ mới được bấm nút nhận việc
+        public async Task<IActionResult> AcceptBooking(int id)
+        {
+            // 1. Lấy ID của người thợ đang đăng nhập từ Token
+            var photographerId = User.FindFirstValue(ClaimTypes.NameIdentifier);
+            if (string.IsNullOrEmpty(photographerId)) return Unauthorized();
+
+            // 2. Gọi Service để xử lý nhận việc
+            var result = await _bookingService.AcceptBookingAsync(id, photographerId);
+
+            if (result)
+            {
+                return Ok(new { message = "Chúc mừng! Bạn đã nhận Job này thành công. Hãy liên hệ với khách ngay nhé!" });
+            }
+
+            return BadRequest("Không thể nhận Job này (có thể Job đã có người nhận hoặc không tồn tại).");
+        }
+
+        [HttpGet("my-history")]
+        [Authorize]
+        public async Task<IActionResult> GetMyHistory()
+        {
+            // 1. Lấy ID và Role từ Token
+            var userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
+            var role = User.FindFirstValue(ClaimTypes.Role);
+
+            if (string.IsNullOrEmpty(userId) || string.IsNullOrEmpty(role))
+                return Unauthorized();
+
+            // 2. Gọi Service xử lý (Hết lỗi _context ngay lập tức!)
+            var history = await _bookingService.GetUserBookingHistoryAsync(userId, role);
+
+            return Ok(history);
+        }
+
+        [HttpPatch("{id}/cancel")]
+        [Authorize]
+        public async Task<IActionResult> CancelBooking(int id)
+        {
+            var userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
+            var role = User.FindFirstValue(ClaimTypes.Role);
+
+            if (string.IsNullOrEmpty(userId) || string.IsNullOrEmpty(role)) return Unauthorized();
+
+            var result = await _bookingService.CancelBookingAsync(id, userId, role);
+
+            if (result)
+            {
+                return Ok(new { message = "Đã hủy đơn hàng thành công." });
+            }
+
+            return BadRequest("Không thể hủy đơn hàng này (Sai quyền hoặc đơn đã hoàn thành).");
         }
     }
 }
