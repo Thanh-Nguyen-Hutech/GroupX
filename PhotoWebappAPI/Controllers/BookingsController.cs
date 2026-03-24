@@ -18,7 +18,6 @@ namespace PhotoWebappAPI.Controllers
         }
 
         // POST: /api/bookings
-        // Chỉ Customer mới được tạo lịch
         [HttpPost]
         [Authorize(Roles = "Customer")]
         public async Task<IActionResult> CreateBooking([FromBody] CreateBookingDto dto)
@@ -35,7 +34,6 @@ namespace PhotoWebappAPI.Controllers
         }
 
         // GET: /api/bookings/requests-feed
-        // Lấy danh sách cho Thợ lướt xem và ứng tuyển
         [HttpGet("requests-feed")]
         [Authorize(Roles = "Photographer, Admin")]
         public async Task<IActionResult> GetRequestsFeed()
@@ -45,7 +43,6 @@ namespace PhotoWebappAPI.Controllers
         }
 
         // PUT: /api/bookings/{id}/accept
-        // Thợ nhận job
         [HttpPut("{id}/accept")]
         [Authorize(Roles = "Photographer")]
         public async Task<IActionResult> AcceptBooking(int id)
@@ -56,15 +53,28 @@ namespace PhotoWebappAPI.Controllers
             var result = await _bookingService.AcceptBookingAsync(id, photographerId);
 
             if (result)
-            {
                 return Ok(new { message = "Chúc mừng! Bạn đã nhận Job này thành công. Hãy liên hệ với khách ngay nhé!" });
-            }
 
-            return BadRequest("Không thể nhận Job này (có thể Job đã có người nhận hoặc không tồn tại).");
+            return BadRequest(new { message = "Không thể nhận Job này (có thể Job đã có người nhận hoặc không tồn tại)." });
+        }
+
+        // 🌟 THÊM MỚI: PUT: /api/bookings/{id}/reject (Từ chối lịch)
+        [HttpPut("{id}/reject")]
+        [Authorize(Roles = "Photographer")]
+        public async Task<IActionResult> RejectBooking(int id)
+        {
+            var photographerId = User.FindFirstValue(ClaimTypes.NameIdentifier);
+            if (string.IsNullOrEmpty(photographerId)) return Unauthorized();
+
+            var result = await _bookingService.RejectBookingAsync(id, photographerId);
+
+            if (result)
+                return Ok(new { message = "Đã từ chối lịch chụp này." });
+
+            return BadRequest(new { message = "Không thể từ chối lịch này (sai trạng thái hoặc sai quyền)." });
         }
 
         // GET: /api/bookings/my-history
-        // Xem lịch sử đặt/nhận chụp
         [HttpGet("my-history")]
         [Authorize]
         public async Task<IActionResult> GetMyHistory()
@@ -80,8 +90,20 @@ namespace PhotoWebappAPI.Controllers
             return Ok(history);
         }
 
+        // 🌟 ĐÃ SỬA: PUT: /api/bookings/{id}/complete (Xác nhận hoàn thành)
+        [HttpPut("{id}/complete")]
+        [Authorize]
+        public async Task<IActionResult> CompleteBooking(int id)
+        {
+            var result = await _bookingService.CompleteBookingAsync(id);
+
+            if (result)
+                return Ok(new { message = "Đã xác nhận hoàn thành buổi chụp!" });
+
+            return BadRequest(new { message = "Không thể xác nhận hoàn thành (có thể đơn chưa được nhận hoặc đã hoàn thành rồi)." });
+        }
+
         // PATCH: /api/bookings/{id}/cancel
-        // Hủy đơn
         [HttpPatch("{id}/cancel")]
         [Authorize]
         public async Task<IActionResult> CancelBooking(int id)
@@ -94,11 +116,9 @@ namespace PhotoWebappAPI.Controllers
             var result = await _bookingService.CancelBookingAsync(id, userId, role);
 
             if (result)
-            {
-                return Ok(new { message = "Đã hủy đơn hàng thành công." });
-            }
+                return Ok(new { message = "Đã hủy lịch chụp thành công." });
 
-            return BadRequest("Không thể hủy đơn hàng này (Sai quyền hoặc đơn đã hoàn thành).");
+            return BadRequest(new { message = "Không thể hủy đơn hàng này (Sai quyền hoặc đơn đã hoàn thành)." });
         }
     }
 }

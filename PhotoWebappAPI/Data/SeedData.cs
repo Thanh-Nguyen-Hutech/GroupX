@@ -7,41 +7,41 @@ namespace PhotoWebappAPI.Data
     {
         public static async Task Initialize(IServiceProvider serviceProvider, UserManager<AppUser> userManager, RoleManager<IdentityRole> roleManager)
         {
-            // 1. Danh sách các quyền (Roles) cần tạo
-            string[] roleNames = { "Admin", "Customer", "Photographer", "Guest" };
+            // 1. Danh sách các Role cần có trong hệ thống
+            string[] roleNames = { "Admin", "Photographer", "Customer" };
 
-            // Lặp qua từng quyền, nếu trong Database chưa có thì tạo mới
             foreach (var roleName in roleNames)
             {
                 var roleExist = await roleManager.RoleExistsAsync(roleName);
                 if (!roleExist)
                 {
-                    // Lệnh này sẽ tự động sinh mã GUID và điền vào bảng AspNetRoles
+                    // Tạo Role nếu chưa tồn tại
                     await roleManager.CreateAsync(new IdentityRole(roleName));
                 }
             }
 
-            // 2. Khởi tạo tài khoản Admin mặc định
-            string adminEmail = "admin@system.com";
+            // 2. Tạo tài khoản SIÊU ADMIN mẫu
+            var adminEmail = "admin@fotoz.com";
             var adminUser = await userManager.FindByEmailAsync(adminEmail);
 
-            // Nếu chưa có tài khoản admin này thì tạo mới
             if (adminUser == null)
             {
-                adminUser = new AppUser
+                var admin = new AppUser
                 {
                     UserName = adminEmail,
                     Email = adminEmail,
-                    FullName = "System Administrator",
-                    EmailConfirmed = true // Bỏ qua bước xác nhận email
+                    FullName = "Hệ Thống Admin",
+                    EmailConfirmed = true,
+                    Address = "Trụ sở FOTOZ"
                 };
 
-                // Lệnh này sẽ mã hóa password, sinh ID và lưu vào bảng AspNetUsers
-                var createPowerUser = await userManager.CreateAsync(adminUser, "Admin@123!");
+                // Thiết lập mật khẩu mặc định: Admin@123
+                var createPowerUser = await userManager.CreateAsync(admin, "Admin@123");
+
                 if (createPowerUser.Succeeded)
                 {
-                    // 3. Nối tài khoản vừa tạo với quyền Admin (Lưu vào bảng AspNetUserRoles)
-                    await userManager.AddToRoleAsync(adminUser, "Admin");
+                    // Gán quyền Admin cho tài khoản này
+                    await userManager.AddToRoleAsync(admin, "Admin");
                 }
             }
         }

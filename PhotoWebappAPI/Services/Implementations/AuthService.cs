@@ -40,7 +40,6 @@ namespace PhotoWebappAPI.Services.Implementations
                 return new AuthResponseDto { IsSuccess = false, Message = "Lỗi khi tạo tài khoản: " + string.Join(", ", result.Errors.Select(e => e.Description)) };
 
             // 3. Gán Role (Phân quyền)
-            // Chỉ cho phép đăng ký Customer hoặc Photographer
             var roleToAssign = dto.Role == "Photographer" ? "Photographer" : "Customer";
             await _userManager.AddToRoleAsync(user, roleToAssign);
 
@@ -52,18 +51,23 @@ namespace PhotoWebappAPI.Services.Implementations
             var user = await _userManager.FindByEmailAsync(dto.Email);
             if (user == null || !await _userManager.CheckPasswordAsync(user, dto.Password))
             {
-                return new AuthResponseDto { IsSuccess = false, Message = "Email hoặc mật khẩu không đúng!" };
+                return new AuthResponseDto { IsSuccess = false, Message = "Sai email hoặc mật khẩu" };
             }
 
             var roles = await _userManager.GetRolesAsync(user);
-            var token = GenerateJwtToken(user, roles.FirstOrDefault() ?? "Guest");
+            var userRole = roles.FirstOrDefault() ?? "Customer";
 
+            // 🌟 SỬA LỖI TẠI ĐÂY: Gọi hàm GenerateJwtToken để lấy chuỗi Token
+            var jwtToken = GenerateJwtToken(user, userRole);
+
+            // ✅ Trả về đầy đủ Token, Role và FullName cho React
             return new AuthResponseDto
             {
                 IsSuccess = true,
-                Token = token,
-                Role = roles.FirstOrDefault(),
-                Message = "Đăng nhập thành công"
+                Message = "Đăng nhập thành công",
+                Token = jwtToken,      // Đã sửa thành jwtToken
+                Role = userRole,
+                FullName = user.FullName // 👉 Tên thật từ Database sẽ bay thẳng về React
             };
         }
 
@@ -78,7 +82,7 @@ namespace PhotoWebappAPI.Services.Implementations
             {
                 new Claim(ClaimTypes.NameIdentifier, user.Id),
                 new Claim(ClaimTypes.Email, user.Email!),
-                new Claim(ClaimTypes.Name, user.FullName),
+                new Claim(ClaimTypes.Name, user.FullName ?? ""),
                 new Claim(ClaimTypes.Role, role)
             };
 
@@ -94,6 +98,7 @@ namespace PhotoWebappAPI.Services.Implementations
             var tokenHandler = new JwtSecurityTokenHandler();
             var token = tokenHandler.CreateToken(tokenDescriptor);
 
+            // Trả về chuỗi token string
             return tokenHandler.WriteToken(token);
         }
     }
