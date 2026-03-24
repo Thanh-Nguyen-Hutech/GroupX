@@ -92,6 +92,16 @@ builder.Services.AddSwaggerGen(c =>
     });
 });
 
+builder.Services.AddCors(options =>
+{
+    options.AddPolicy("AllowReactApp", builder =>
+    {
+        builder.WithOrigins("http://localhost:5173") // Cho phép React truy cập
+               .AllowAnyHeader()
+               .AllowAnyMethod();
+    });
+});
+
 var app = builder.Build();
 
 // 5. Cấu hình Middleware HTTP pipeline
@@ -102,6 +112,7 @@ if (app.Environment.IsDevelopment())
 }
 
 app.UseHttpsRedirection();
+app.UseCors("AllowReactApp");
 app.UseAuthentication(); // Xác thực danh tính (Ai đây?) - Luôn nằm trước
 app.UseAuthorization();  // Phân quyền (Được làm gì?)
 app.MapControllers();

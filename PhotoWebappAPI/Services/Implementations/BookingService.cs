@@ -45,37 +45,40 @@ namespace PhotoWebappAPI.Services.Implementations
 
         public async Task<bool> AcceptBookingAsync(int bookingId, string photographerId)
         {
-            // 1. Dùng Repository để tìm Booking theo Id thay vì dùng _context
             var booking = await _bookingRepo.GetByIdAsync(bookingId);
 
-            // 2. Kiểm tra các điều kiện chặn (Validations)
             if (booking == null || booking.Status != "Pending" || !string.IsNullOrEmpty(booking.PhotographerId))
                 return false;
 
-            // 3. Cập nhật thông tin thợ nhận việc
             booking.PhotographerId = photographerId;
-            booking.Status = "Confirmed";
+            booking.Status = "Accepted"; // ✅ ĐỔI TỪ Confirmed THÀNH Accepted
 
-            // 4. Lưu thay đổi thông qua Repository
-            // Lưu ý: Hàm SaveChangesAsync trong Repository nên trả về bool hoặc Task
             return await _bookingRepo.SaveChangesAsync();
         }
-        public async Task<IEnumerable<Booking>> GetUserBookingHistoryAsync(string userId, string role)
+        public async Task<IEnumerable<object>> GetUserBookingHistoryAsync(string userId, string role)
         {
-            // Lấy toàn bộ danh sách từ Repo
-            var allBookings = await _bookingRepo.GetAllAsync(); // Đảm bảo Repo có hàm GetAllAsync
+            // ✅ Gọi qua Repository thay vì _context
+            var bookings = await _bookingRepo.GetHistoryByUserIdAsync(userId, role);
 
-            if (role == "Customer")
-            {
-                return allBookings.Where(b => b.CustomerId == userId)
-                                  .OrderByDescending(b => b.ShootingDate);
-            }
-            else
-            {
-                return allBookings.Where(b => b.PhotographerId == userId)
-                                  .OrderByDescending(b => b.ShootingDate);
-            }
+            // ✅ Thực hiện Mapping tại Service
+            var result = bookings.Select(b => new {
+                id = b.Id,
+                // Logic: Nếu tôi là Thợ, hiện tên Khách. Nếu tôi là Khách, hiện tên Thợ.
+                customerName = b.Customer?.FullName,
+                photographerName = b.Photographer?.FullName,
+                title = b.Title,
+                bookingDate = b.ShootingDate, // Đồng bộ tên biến cho Frontend
+                location = b.Location,
+                serviceType = b.ServiceType,
+                notes = b.Content,
+                status = b.Status,
+                minPrice = b.MinPrice,
+                maxPrice = b.MaxPrice
+            });
+
+            return result;
         }
+
         public async Task<bool> CancelBookingAsync(int bookingId, string userId, string role)
         {
             var booking = await _bookingRepo.GetByIdAsync(bookingId);
@@ -93,5 +96,6 @@ namespace PhotoWebappAPI.Services.Implementations
 
             return await _bookingRepo.SaveChangesAsync();
         }
+
     }
 }

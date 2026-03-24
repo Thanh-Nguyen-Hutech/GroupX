@@ -8,7 +8,10 @@ namespace PhotoWebappAPI.Services.Interfaces
         Task<IEnumerable<Booking>> GetRequestsFeedAsync();
         Task CreateBookingRequestAsync(string customerId, CreateBookingDto dto);
         Task<bool> AcceptBookingAsync(int bookingId, string photographerId);
-        Task<IEnumerable<Booking>> GetUserBookingHistoryAsync(string userId, string role);
+
+        // 🛠️ ĐỔI Ở ĐÂY: Trả về object để khớp với logic mapping ở BookingService
+        Task<IEnumerable<object>> GetUserBookingHistoryAsync(string userId, string role);
+
         Task<bool> CancelBookingAsync(int bookingId, string userId, string role);
     }
 }

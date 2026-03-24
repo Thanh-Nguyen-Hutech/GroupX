@@ -3,6 +3,7 @@ using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using PhotoWebappAPI.Data;
 
@@ -11,9 +12,11 @@ using PhotoWebappAPI.Data;
 namespace PhotoWebappAPI.Migrations
 {
     [DbContext(typeof(ApplicationDbContext))]
-    partial class ApplicationDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260324032819_AddIsActiveToAppUser")]
+    partial class AddIsActiveToAppUser
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -298,37 +301,6 @@ namespace PhotoWebappAPI.Migrations
                     b.ToTable("Bookings");
                 });
 
-            modelBuilder.Entity("PhotoWebappAPI.Models.Comment", b =>
-                {
-                    b.Property<int>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("int");
-
-                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
-
-                    b.Property<DateTime>("CreatedAt")
-                        .HasColumnType("datetime2");
-
-                    b.Property<int>("PostId")
-                        .HasColumnType("int");
-
-                    b.Property<string>("Text")
-                        .IsRequired()
-                        .HasColumnType("nvarchar(max)");
-
-                    b.Property<string>("UserId")
-                        .IsRequired()
-                        .HasColumnType("nvarchar(450)");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("PostId");
-
-                    b.HasIndex("UserId");
-
-                    b.ToTable("Comments");
-                });
-
             modelBuilder.Entity("PhotoWebappAPI.Models.Message", b =>
                 {
                     b.Property<int>("Id")
@@ -384,33 +356,6 @@ namespace PhotoWebappAPI.Migrations
                     b.HasIndex("PostId");
 
                     b.ToTable("Photos");
-                });
-
-            modelBuilder.Entity("PhotoWebappAPI.Models.PhotoWebappAPI.Models.Like", b =>
-                {
-                    b.Property<int>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("int");
-
-                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
-
-                    b.Property<DateTime>("CreatedAt")
-                        .HasColumnType("datetime2");
-
-                    b.Property<int>("PostId")
-                        .HasColumnType("int");
-
-                    b.Property<string>("UserId")
-                        .IsRequired()
-                        .HasColumnType("nvarchar(450)");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("PostId");
-
-                    b.HasIndex("UserId");
-
-                    b.ToTable("Likes");
                 });
 
             modelBuilder.Entity("PhotoWebappAPI.Models.Post", b =>
@@ -539,25 +484,6 @@ namespace PhotoWebappAPI.Migrations
                     b.Navigation("Photographer");
                 });
 
-            modelBuilder.Entity("PhotoWebappAPI.Models.Comment", b =>
-                {
-                    b.HasOne("PhotoWebappAPI.Models.Post", "Post")
-                        .WithMany("Comments")
-                        .HasForeignKey("PostId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
-                    b.HasOne("PhotoWebappAPI.Models.AppUser", "User")
-                        .WithMany()
-                        .HasForeignKey("UserId")
-                        .OnDelete(DeleteBehavior.NoAction)
-                        .IsRequired();
-
-                    b.Navigation("Post");
-
-                    b.Navigation("User");
-                });
-
             modelBuilder.Entity("PhotoWebappAPI.Models.Message", b =>
                 {
                     b.HasOne("PhotoWebappAPI.Models.AppUser", "Receiver")
@@ -586,25 +512,6 @@ namespace PhotoWebappAPI.Migrations
                         .IsRequired();
 
                     b.Navigation("Post");
-                });
-
-            modelBuilder.Entity("PhotoWebappAPI.Models.PhotoWebappAPI.Models.Like", b =>
-                {
-                    b.HasOne("PhotoWebappAPI.Models.Post", "Post")
-                        .WithMany("Likes")
-                        .HasForeignKey("PostId")
-                        .OnDelete(DeleteBehavior.NoAction)
-                        .IsRequired();
-
-                    b.HasOne("PhotoWebappAPI.Models.AppUser", "User")
-                        .WithMany()
-                        .HasForeignKey("UserId")
-                        .OnDelete(DeleteBehavior.NoAction)
-                        .IsRequired();
-
-                    b.Navigation("Post");
-
-                    b.Navigation("User");
                 });
 
             modelBuilder.Entity("PhotoWebappAPI.Models.Post", b =>
@@ -649,10 +556,6 @@ namespace PhotoWebappAPI.Migrations
 
             modelBuilder.Entity("PhotoWebappAPI.Models.Post", b =>
                 {
-                    b.Navigation("Comments");
-
-                    b.Navigation("Likes");
-
                     b.Navigation("Photos");
                 });
 #pragma warning restore 612, 618

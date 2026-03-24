@@ -1,4 +1,5 @@
-﻿using System.ComponentModel.DataAnnotations;
+﻿using PhotoWebappAPI.Models.PhotoWebappAPI.Models;
+using System.ComponentModel.DataAnnotations;
 
 namespace PhotoWebappAPI.Models
 {
@@ -13,5 +14,7 @@ namespace PhotoWebappAPI.Models
         public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 
         public ICollection<Photo> Photos { get; set; } = new List<Photo>();
+        public ICollection<Like> Likes { get; set; } = new List<Like>();
+        public ICollection<Comment> Comments { get; set; } = new List<Comment>();
     }
 }

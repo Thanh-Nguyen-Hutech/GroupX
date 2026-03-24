@@ -1,6 +1,8 @@
 ﻿using Microsoft.AspNetCore.Identity.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore;
 using PhotoWebappAPI.Models;
+using PhotoWebappAPI.Models.PhotoWebappAPI.Models;
+using System.Reflection.Emit;
 
 namespace PhotoWebappAPI.Data
 {
@@ -13,6 +15,8 @@ namespace PhotoWebappAPI.Data
         public DbSet<Photo> Photos { get; set; }
         public DbSet<Message> Messages { get; set; }
         public DbSet<Review> Reviews { get; set; }
+        public DbSet<Like> Likes { get; set; }
+        public DbSet<Comment> Comments { get; set; }
 
         protected override void OnModelCreating(ModelBuilder builder)
         {
@@ -50,6 +54,49 @@ namespace PhotoWebappAPI.Data
                 .WithOne(r => r.Booking)
                 .HasForeignKey<Review>(r => r.BookingId)
                 .OnDelete(DeleteBehavior.Cascade);
+
+            // --------------------------------------------------------
+            // 4. FIX LỖI 1785: TẮT CASCADE DELETE CHO LIKES VÀ COMMENTS
+            // --------------------------------------------------------
+
+            // Cấu hình Comment
+            builder.Entity<Comment>()
+                .HasOne(c => c.Post)
+                .WithMany(p => p.Comments)
+                .HasForeignKey(c => c.PostId)
+                .OnDelete(DeleteBehavior.NoAction);
+
+            builder.Entity<Comment>()
+                .HasOne(c => c.User)
+                .WithMany()
+                .HasForeignKey(c => c.UserId)
+                .OnDelete(DeleteBehavior.NoAction);
+
+            builder.Entity<Comment>()
+                .HasOne(c => c.Post)
+                .WithMany(p => p.Comments)
+                .HasForeignKey(c => c.PostId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            // Khi xóa Post, tự động xóa Likes
+            builder.Entity<Like>()
+                .HasOne(l => l.Post)
+                .WithMany(p => p.Likes)
+                .HasForeignKey(l => l.PostId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            // Cấu hình Like
+            builder.Entity<Like>()
+                .HasOne(l => l.Post)
+                .WithMany(p => p.Likes)
+                .HasForeignKey(l => l.PostId)
+                .OnDelete(DeleteBehavior.NoAction);
+
+            builder.Entity<Like>()
+                .HasOne(l => l.User)
+                .WithMany()
+                .HasForeignKey(l => l.UserId)
+                .OnDelete(DeleteBehavior.NoAction);
         }
     }
 }

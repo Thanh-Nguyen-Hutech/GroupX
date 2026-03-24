@@ -5,15 +5,14 @@ using Microsoft.EntityFrameworkCore;
 using PhotoWebappAPI.Data;
 using PhotoWebappAPI.DTOs.Post;
 using PhotoWebappAPI.Models;
+using PhotoWebappAPI.Models.PhotoWebappAPI.Models;
 using PhotoWebappAPI.Services.Interfaces;
 using System.Security.Claims;
-
 
 namespace PhotoWebappAPI.Controllers
 {
     [Route("api/[controller]")]
     [ApiController]
-    [Authorize(Roles = "Photographer")] // Khóa bảo mật: CHỈ THỢ mới được đăng bài!
     public class PostsController : ControllerBase
     {
         private readonly ApplicationDbContext _context;
@@ -27,84 +26,75 @@ namespace PhotoWebappAPI.Controllers
             _photoService = photoService;
         }
 
-        [HttpPost]
+        // CHỈ THỢ MỚI ĐƯỢC ĐĂNG BÀI
+        [HttpPost("multiple")]
+        [Authorize(Roles = "Photographer")]
         public async Task<IActionResult> CreatePost([FromForm] CreatePostDto dto)
         {
-            // 1. Nhận diện thợ nào đang thao tác
             var email = User.FindFirstValue(ClaimTypes.Email);
             if (email == null) return Unauthorized("Token không hợp lệ.");
 
             var user = await _userManager.FindByEmailAsync(email);
             if (user == null) return NotFound("Không tìm thấy thợ chụp ảnh.");
 
-            // 2. Tạo phần CHỮ của bài đăng trước
             var newPost = new Post
             {
                 Title = dto.Title,
                 Description = dto.Description,
-                PhotographerId = user.Id, // Đã map đúng cột PhotographerId của bạn
+                PhotographerId = user.Id,
                 CreatedAt = DateTime.UtcNow
             };
 
             _context.Posts.Add(newPost);
-            await _context.SaveChangesAsync(); // Lưu xuống DB để lấy cái Id của bài đăng
+            await _context.SaveChangesAsync();
 
-            // 3. Xử lý phần ẢNH: Lặp qua từng file để đẩy lên mây
             if (dto.Images != null && dto.Images.Count > 0)
             {
                 foreach (var file in dto.Images)
                 {
                     var uploadResult = await _photoService.AddPhotoAsync(file);
-
-                    if (uploadResult.Error == null) // Nếu up thành công
+                    if (uploadResult.Error == null)
                     {
                         var photo = new Photo
                         {
-                            Url = uploadResult.SecureUrl.ToString(), // Chỉ lưu mỗi Url như Model của bạn
+                            Url = uploadResult.SecureUrl.ToString(),
                             PostId = newPost.Id
                         };
                         _context.Photos.Add(photo);
                     }
                 }
-                await _context.SaveChangesAsync(); // Lưu một loạt link ảnh vào DB
+                await _context.SaveChangesAsync();
             }
 
-            return Ok(new
-            {
-                message = "Đăng bài Portfolio thành công rực rỡ!",
-                postId = newPost.Id
-            });
+            return Ok(new { message = "Đăng bài Portfolio thành công rực rỡ!", postId = newPost.Id });
         }
 
         [HttpGet]
         [AllowAnonymous]
         public async Task<IActionResult> GetAllPosts([FromQuery] PostFilterDto filter)
         {
-            // 1. Khởi tạo query từ database nhưng CHƯA thực thi ngay (IQueryable)
             var query = _context.Posts
                 .Include(p => p.Photographer)
                 .Include(p => p.Photos)
+                .Include(p => p.Likes)
+                .Include(p => p.Comments)
                 .AsQueryable();
 
-            // 2. Lọc theo từ khóa (Tiêu đề hoặc Mô tả)
             if (!string.IsNullOrEmpty(filter.SearchTerm))
             {
                 query = query.Where(p => p.Title.Contains(filter.SearchTerm)
                                       || (p.Description != null && p.Description.Contains(filter.SearchTerm)));
             }
 
-            // 3. Lọc theo tên Thợ chụp ảnh
             if (!string.IsNullOrEmpty(filter.PhotographerName))
             {
                 query = query.Where(p => p.Photographer.FullName.Contains(filter.PhotographerName));
             }
 
-            // 4. Sắp xếp
             query = filter.SortBy == "oldest"
                 ? query.OrderBy(p => p.CreatedAt)
                 : query.OrderByDescending(p => p.CreatedAt);
 
-            // 5. Lúc này mới thực sự chạy xuống SQL Server lấy dữ liệu
             var posts = await query.Select(p => new PostResponseDto
             {
                 Id = p.Id,
@@ -112,14 +102,46 @@ namespace PhotoWebappAPI.Controllers
                 Description = p.Description,
                 CreatedAt = p.CreatedAt,
                 PhotographerName = p.Photographer.FullName,
-                Photos = p.Photos.Select(img => new PhotoDto
-                {
-                    Id = img.Id,
-                    Url = img.Url
-                }).ToList()
+                Photos = p.Photos.Select(img => new PhotoDto { Id = img.Id, Url = img.Url }).ToList(),
+                LikesCount = p.Likes.Count,
+                Comments = p.Comments.Select(c => new CommentResponseDto { Id = c.Id, Author = "User", Text = c.Text }).ToList()
             }).ToListAsync();
 
             return Ok(posts);
+        }
+
+        [HttpGet("{id}")]
+        [AllowAnonymous]
+        public async Task<IActionResult> GetPostById(int id)
+        {
+            var post = await _context.Posts
+                .Include(p => p.Photographer)
+                .Include(p => p.Photos)
+                .Include(p => p.Likes)
+                .Include(p => p.Comments)
+                .ThenInclude(c => c.User)
+                .FirstOrDefaultAsync(p => p.Id == id);
+
+            if (post == null) return NotFound("Không thấy bài đăng");
+
+            var response = new PostResponseDto
+            {
+                Id = post.Id,
+                Title = post.Title,
+                Description = post.Description,
+                CreatedAt = post.CreatedAt,
+                PhotographerName = post.Photographer.FullName,
+                Photos = post.Photos.Select(img => new PhotoDto { Id = img.Id, Url = img.Url }).ToList(),
+                LikesCount = post.Likes.Count,
+                Comments = post.Comments.Select(c => new CommentResponseDto
+                {
+                    Id = c.Id,
+                    Author = c.User.FullName ?? "Người dùng",
+                    Text = c.Text
+                }).ToList()
+            };
+
+            return Ok(response);
         }
 
         [HttpPut("{id}")]
@@ -140,54 +162,103 @@ namespace PhotoWebappAPI.Controllers
         }
 
         [HttpDelete("{id}")]
-        [Authorize(Roles = "Photographer")] // Chỉ thợ mới được xóa bài của mình
+        [Authorize(Roles = "Photographer")]
         public async Task<IActionResult> DeletePost(int id)
         {
-            // 1. Nhận diện thợ nào đang thao tác
             var email = User.FindFirstValue(ClaimTypes.Email);
-            if (email == null) return Unauthorized();
-
             var user = await _userManager.FindByEmailAsync(email);
-            if (user == null) return NotFound();
 
-            // 2. Tìm bài đăng, bao gồm cả danh sách ảnh của nó
+            // 1. Lấy bài đăng bao gồm cả Photos, Likes và Comments
             var post = await _context.Posts
                 .Include(p => p.Photos)
+                .Include(p => p.Likes)      // <--- Thêm Include này
+                .Include(p => p.Comments)   // <--- Thêm Include này
                 .FirstOrDefaultAsync(p => p.Id == id);
 
-            if (post == null) return NotFound("Không tìm thấy bài đăng.");
+            if (post == null) return NotFound();
+            if (post.PhotographerId != user.Id) return Forbid();
 
-            // 3. Bảo mật: Kiểm tra xem bài đăng này có phải của thợ này không
-            if (post.PhotographerId != user.Id)
-                return Forbid("Bạn không có quyền xóa bài đăng của người khác.");
+            // 2. Xóa dữ liệu liên quan trong Database
 
-            // 4. Xử lý xóa ảnh trên Cloudinary (Quan trọng nhất!)
-            if (post.Photos.Any())
+            // Xóa ảnh (cả file vật lý và bản ghi DB)
+            if (post.Photos != null && post.Photos.Any())
             {
                 foreach (var photo in post.Photos)
                 {
-                    // Kiểm tra xem ảnh có PublicId không
                     if (!string.IsNullOrEmpty(photo.PublicId))
                     {
-                        // Gọi sang Cloudinary để xóa file ảnh thật trên mây
-                        var deleteResult = await _photoService.DeletePhotoAsync(photo.PublicId);
-
-                        // Nếu Cloudinary báo lỗi (ví dụ: sai ID), chúng ta log lại hoặc xử lý
-                        if (deleteResult.Error != null)
-                        {
-                            // Tùy chọn: Log lỗi hoặc bỏ qua để tiếp tục xóa SQL
-                            // return BadRequest($"Lỗi khi xóa ảnh trên Cloudinary: {deleteResult.Error.Message}");
-                        }
+                        await _photoService.DeletePhotoAsync(photo.PublicId);
                     }
                 }
+                _context.Photos.RemoveRange(post.Photos);
             }
 
-            // 5. Cuối cùng, xóa bài đăng trong Database SQL Server
-            // Do bạn thiết kế Cascade Delete (Post -> Photos), nên khi xóa Post, SQL tự xóa Photos luôn
+            // Xóa Likes
+            if (post.Likes != null && post.Likes.Any())
+            {
+                _context.Likes.RemoveRange(post.Likes);
+            }
+
+            // Xóa Comments
+            if (post.Comments != null && post.Comments.Any())
+            {
+                _context.Comments.RemoveRange(post.Comments);
+            }
+
+            // 3. Sau khi đã "dọn dẹp" sạch sẽ các bảng liên quan, mới xóa Post
             _context.Posts.Remove(post);
+
             await _context.SaveChangesAsync();
 
-            return Ok(new { message = "Đã xóa bài đăng và toàn bộ ảnh trên mây thành công!" });
+            return Ok(new { message = "Đã xóa bài đăng thành công!" });
+        }
+
+        // ✅ CẢ KHÁCH VÀ THỢ ĐỀU LIKE ĐƯỢC
+        [HttpPost("{id}/like")]
+        [Authorize]
+        public async Task<IActionResult> ToggleLike(int id)
+        {
+            var email = User.FindFirstValue(ClaimTypes.Email);
+            var user = await _userManager.FindByEmailAsync(email);
+            if (user == null) return Unauthorized();
+
+            var post = await _context.Posts.FindAsync(id);
+            if (post == null) return NotFound("Không tìm thấy bài đăng.");
+
+            var existingLike = await _context.Likes
+                .FirstOrDefaultAsync(l => l.PostId == id && l.UserId == user.Id);
+
+            if (existingLike == null)
+            {
+                _context.Likes.Add(new Like { PostId = id, UserId = user.Id });
+                await _context.SaveChangesAsync();
+                return Ok(new { message = "Đã thả tim!" });
+            }
+            else
+            {
+                _context.Likes.Remove(existingLike);
+                await _context.SaveChangesAsync();
+                return Ok(new { message = "Đã bỏ tim!" });
+            }
+        }
+
+        // ✅ CẢ KHÁCH VÀ THỢ ĐỀU CMT ĐƯỢC
+        [HttpPost("{id}/comment")]
+        [Authorize]
+        public async Task<IActionResult> AddComment(int id, [FromBody] CommentDto dto)
+        {
+            var email = User.FindFirstValue(ClaimTypes.Email);
+            var user = await _userManager.FindByEmailAsync(email);
+            if (user == null) return Unauthorized();
+
+            var post = await _context.Posts.FindAsync(id);
+            if (post == null) return NotFound("Không tìm thấy bài đăng.");
+
+            var comment = new Comment { Text = dto.Text, PostId = id, UserId = user.Id };
+            _context.Comments.Add(comment);
+            await _context.SaveChangesAsync();
+
+            return Ok(new { id = comment.Id, author = user.FullName, text = comment.Text });
         }
     }
 }

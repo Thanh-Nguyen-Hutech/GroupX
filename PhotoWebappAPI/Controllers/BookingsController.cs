@@ -1,11 +1,8 @@
 ﻿using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
-using Microsoft.EntityFrameworkCore;
 using PhotoWebappAPI.DTOs.Booking;
-using PhotoWebappAPI.Models;
 using PhotoWebappAPI.Services.Interfaces;
 using System.Security.Claims;
-using PhotoWebappAPI.Data;
 
 namespace PhotoWebappAPI.Controllers
 {
@@ -29,7 +26,6 @@ namespace PhotoWebappAPI.Controllers
             if (!ModelState.IsValid)
                 return BadRequest(ModelState);
 
-            // Lấy ID của người dùng đang đăng nhập từ JWT Token
             var currentUserId = User.FindFirstValue(ClaimTypes.NameIdentifier);
             if (currentUserId == null) return Unauthorized();
 
@@ -41,23 +37,22 @@ namespace PhotoWebappAPI.Controllers
         // GET: /api/bookings/requests-feed
         // Lấy danh sách cho Thợ lướt xem và ứng tuyển
         [HttpGet("requests-feed")]
-        [Authorize(Roles = "Photographer, Admin")] // Thợ hoặc Admin mới được xem
+        [Authorize(Roles = "Photographer, Admin")]
         public async Task<IActionResult> GetRequestsFeed()
         {
             var requests = await _bookingService.GetRequestsFeedAsync();
-            // LƯU Ý: Trong thực tế nên map requests (Entity) ra một DTO khác để không lộ ID dư thừa
             return Ok(requests);
         }
 
+        // PUT: /api/bookings/{id}/accept
+        // Thợ nhận job
         [HttpPut("{id}/accept")]
-        [Authorize(Roles = "Photographer")] // CHỈ THỢ mới được bấm nút nhận việc
+        [Authorize(Roles = "Photographer")]
         public async Task<IActionResult> AcceptBooking(int id)
         {
-            // 1. Lấy ID của người thợ đang đăng nhập từ Token
             var photographerId = User.FindFirstValue(ClaimTypes.NameIdentifier);
             if (string.IsNullOrEmpty(photographerId)) return Unauthorized();
 
-            // 2. Gọi Service để xử lý nhận việc
             var result = await _bookingService.AcceptBookingAsync(id, photographerId);
 
             if (result)
@@ -68,23 +63,25 @@ namespace PhotoWebappAPI.Controllers
             return BadRequest("Không thể nhận Job này (có thể Job đã có người nhận hoặc không tồn tại).");
         }
 
+        // GET: /api/bookings/my-history
+        // Xem lịch sử đặt/nhận chụp
         [HttpGet("my-history")]
         [Authorize]
         public async Task<IActionResult> GetMyHistory()
         {
-            // 1. Lấy ID và Role từ Token
             var userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
             var role = User.FindFirstValue(ClaimTypes.Role);
 
             if (string.IsNullOrEmpty(userId) || string.IsNullOrEmpty(role))
                 return Unauthorized();
 
-            // 2. Gọi Service xử lý (Hết lỗi _context ngay lập tức!)
             var history = await _bookingService.GetUserBookingHistoryAsync(userId, role);
 
             return Ok(history);
         }
 
+        // PATCH: /api/bookings/{id}/cancel
+        // Hủy đơn
         [HttpPatch("{id}/cancel")]
         [Authorize]
         public async Task<IActionResult> CancelBooking(int id)

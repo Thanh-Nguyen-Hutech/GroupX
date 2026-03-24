@@ -46,5 +46,20 @@ namespace PhotoWebappAPI.Repositories.Implementations
                 .Include(b => b.Photographer)
                 .ToListAsync();
         }
+
+        public async Task<IEnumerable<Booking>> GetHistoryByUserIdAsync(string userId, string role)
+        {
+            var query = _context.Bookings
+                .Include(b => b.Customer)
+                .Include(b => b.Photographer)
+                .AsQueryable();
+
+            if (role == "Photographer")
+                query = query.Where(b => b.PhotographerId == userId);
+            else
+                query = query.Where(b => b.CustomerId == userId);
+
+            return await query.OrderByDescending(b => b.Id).ToListAsync();
+        }
     }
 }
