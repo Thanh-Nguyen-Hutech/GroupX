@@ -124,27 +124,33 @@ namespace PhotoWebappAPI.Controllers
         [HttpGet("reports")]
         public async Task<IActionResult> GetAllReports()
         {
-            /* 💡 Nếu bạn chưa code xong bảng Reports trong CSDL, 
-               đoạn Mock Data này sẽ giúp giao diện React hiển thị ngay lập tức để bạn test.
-               Khi nào làm xong DB thì bạn thay bằng: _context.Reports.ToListAsync();
-            */
-            var mockReports = new[] {
-                new { id = 1, userName = "Phạm Nam", userEmail = "nam@example.com", title = "Lỗi không tải được ảnh", content = "Tôi bấm đăng bài nhưng ảnh cứ quay vòng vòng không lên được.", isResolved = false, createdAt = DateTime.UtcNow.AddDays(-1) },
-                new { id = 2, userName = "Sau Bá", userEmail = "thanhkl1z@gmail.com", title = "Trang cá nhân bị đen", content = "Sau khi tôi cập nhật bio thì trang profile thỉnh thoảng bị đen màn hình.", isResolved = true, createdAt = DateTime.UtcNow.AddDays(-2) },
-                new { id = 3, userName = "Khách Hàng VIP", userEmail = "khach@gmail.com", title = "Nút đặt lịch bị đơ", content = "Tôi điền xong form bấm gửi thì không thấy phản hồi gì.", isResolved = false, createdAt = DateTime.UtcNow.AddHours(-5) }
-            };
+            // 🌟 LẤY DATA THẬT TỪ DATABASE
+            var reports = await _context.Reports
+                .Include(r => r.User) // Kéo theo thông tin người gửi
+                .OrderByDescending(r => r.CreatedAt)
+                .Select(r => new {
+                    id = r.Id,
+                    userName = r.User.FullName,
+                    userEmail = r.User.Email,
+                    title = r.Title,
+                    content = r.Content,
+                    isResolved = r.IsResolved,
+                    createdAt = r.CreatedAt
+                })
+                .ToListAsync();
 
-            return Ok(mockReports);
+            return Ok(reports);
         }
 
         [HttpPut("reports/{id}/resolve")]
         public async Task<IActionResult> ResolveReport(int id)
         {
-            // Code xử lý khi có DB:
-            // var report = await _context.Reports.FindAsync(id);
-            // if (report == null) return NotFound("Không tìm thấy báo cáo.");
-            // report.IsResolved = true;
-            // await _context.SaveChangesAsync();
+            // 🌟 CẬP NHẬT TRẠNG THÁI VÀO DATABASE THẬT
+            var report = await _context.Reports.FindAsync(id);
+            if (report == null) return NotFound("Không tìm thấy báo cáo.");
+
+            report.IsResolved = true;
+            await _context.SaveChangesAsync();
 
             return Ok(new { message = "Đã đánh dấu xử lý lỗi thành công!" });
         }

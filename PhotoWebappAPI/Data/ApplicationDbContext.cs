@@ -17,6 +17,7 @@ namespace PhotoWebappAPI.Data
         public DbSet<Review> Reviews { get; set; }
         public DbSet<Like> Likes { get; set; }
         public DbSet<Comment> Comments { get; set; }
+        public DbSet<Report> Reports { get; set; }
 
         protected override void OnModelCreating(ModelBuilder builder)
         {
