@@ -1,6 +1,8 @@
 ﻿using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
 using PhotoWebappAPI.DTOs.Booking;
+using PhotoWebappAPI.Models; // Chứa AppUser
 using PhotoWebappAPI.Services.Interfaces;
 using System.Security.Claims;
 
@@ -12,28 +14,30 @@ namespace PhotoWebappAPI.Controllers
     {
         private readonly IBookingService _bookingService;
 
-        public BookingsController(IBookingService bookingService)
+        // 🌟 BƯỚC 1: Khai báo lại UserManager
+        private readonly UserManager<AppUser> _userManager;
+
+        // 🌟 BƯỚC 2: Tiêm (Inject) UserManager vào Constructor để không bị lỗi Compile
+        public BookingsController(IBookingService bookingService, UserManager<AppUser> userManager)
         {
             _bookingService = bookingService;
+            _userManager = userManager;
         }
 
-        // POST: /api/bookings
         [HttpPost]
         [Authorize(Roles = "Customer")]
         public async Task<IActionResult> CreateBooking([FromBody] CreateBookingDto dto)
         {
-            if (!ModelState.IsValid)
-                return BadRequest(ModelState);
+            if (!ModelState.IsValid) return BadRequest(ModelState);
 
-            var currentUserId = User.FindFirstValue(ClaimTypes.NameIdentifier);
-            if (currentUserId == null) return Unauthorized();
+            var email = User.FindFirstValue(ClaimTypes.Email);
+            var user = await _userManager.FindByEmailAsync(email);
+            if (user == null) return Unauthorized();
 
-            await _bookingService.CreateBookingRequestAsync(currentUserId, dto);
-
+            await _bookingService.CreateBookingRequestAsync(user.Id, dto);
             return Ok(new { message = "Tạo yêu cầu tìm thợ chụp thành công!" });
         }
 
-        // GET: /api/bookings/requests-feed
         [HttpGet("requests-feed")]
         [Authorize(Roles = "Photographer, Admin")]
         public async Task<IActionResult> GetRequestsFeed()
@@ -42,83 +46,77 @@ namespace PhotoWebappAPI.Controllers
             return Ok(requests);
         }
 
-        // PUT: /api/bookings/{id}/accept
         [HttpPut("{id}/accept")]
         [Authorize(Roles = "Photographer")]
         public async Task<IActionResult> AcceptBooking(int id)
         {
-            var photographerId = User.FindFirstValue(ClaimTypes.NameIdentifier);
-            if (string.IsNullOrEmpty(photographerId)) return Unauthorized();
+            // 🌟 BƯỚC 3: Dùng Email để chọc xuống Database lấy ra đúng cái ID chuẩn 100%
+            var email = User.FindFirstValue(ClaimTypes.Email);
+            var user = await _userManager.FindByEmailAsync(email);
+            if (user == null) return Unauthorized();
 
-            var result = await _bookingService.AcceptBookingAsync(id, photographerId);
+            // Truyền user.Id xịn vào Service
+            var success = await _bookingService.AcceptBookingAsync(id, user.Id);
 
-            if (result)
-                return Ok(new { message = "Chúc mừng! Bạn đã nhận Job này thành công. Hãy liên hệ với khách ngay nhé!" });
+            if (!success) return BadRequest(new { message = "Không thể nhận Job này (có thể Job đã có người nhận hoặc sai quyền)." });
 
-            return BadRequest(new { message = "Không thể nhận Job này (có thể Job đã có người nhận hoặc không tồn tại)." });
+            return Ok(new { message = "Nhận lịch chụp thành công!" });
         }
 
-        // 🌟 THÊM MỚI: PUT: /api/bookings/{id}/reject (Từ chối lịch)
         [HttpPut("{id}/reject")]
         [Authorize(Roles = "Photographer")]
         public async Task<IActionResult> RejectBooking(int id)
         {
-            var photographerId = User.FindFirstValue(ClaimTypes.NameIdentifier);
-            if (string.IsNullOrEmpty(photographerId)) return Unauthorized();
+            var email = User.FindFirstValue(ClaimTypes.Email);
+            var user = await _userManager.FindByEmailAsync(email);
+            if (user == null) return Unauthorized();
 
-            var result = await _bookingService.RejectBookingAsync(id, photographerId);
+            var result = await _bookingService.RejectBookingAsync(id, user.Id);
 
-            if (result)
-                return Ok(new { message = "Đã từ chối lịch chụp này." });
+            if (result) return Ok(new { message = "Đã từ chối lịch chụp này." });
 
-            return BadRequest(new { message = "Không thể từ chối lịch này (sai trạng thái hoặc sai quyền)." });
+            return BadRequest(new { message = "Không thể từ chối lịch này." });
         }
 
-        // GET: /api/bookings/my-history
         [HttpGet("my-history")]
         [Authorize]
         public async Task<IActionResult> GetMyHistory()
         {
-            var userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
+            var email = User.FindFirstValue(ClaimTypes.Email);
+            var user = await _userManager.FindByEmailAsync(email);
             var role = User.FindFirstValue(ClaimTypes.Role);
 
-            if (string.IsNullOrEmpty(userId) || string.IsNullOrEmpty(role))
-                return Unauthorized();
+            if (user == null || string.IsNullOrEmpty(role)) return Unauthorized();
 
-            var history = await _bookingService.GetUserBookingHistoryAsync(userId, role);
-
+            var history = await _bookingService.GetUserBookingHistoryAsync(user.Id, role);
             return Ok(history);
         }
 
-        // 🌟 ĐÃ SỬA: PUT: /api/bookings/{id}/complete (Xác nhận hoàn thành)
         [HttpPut("{id}/complete")]
         [Authorize]
         public async Task<IActionResult> CompleteBooking(int id)
         {
             var result = await _bookingService.CompleteBookingAsync(id);
+            if (result) return Ok(new { message = "Đã xác nhận hoàn thành buổi chụp!" });
 
-            if (result)
-                return Ok(new { message = "Đã xác nhận hoàn thành buổi chụp!" });
-
-            return BadRequest(new { message = "Không thể xác nhận hoàn thành (có thể đơn chưa được nhận hoặc đã hoàn thành rồi)." });
+            return BadRequest(new { message = "Không thể xác nhận hoàn thành." });
         }
 
-        // PATCH: /api/bookings/{id}/cancel
         [HttpPatch("{id}/cancel")]
         [Authorize]
         public async Task<IActionResult> CancelBooking(int id)
         {
-            var userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
+            var email = User.FindFirstValue(ClaimTypes.Email);
+            var user = await _userManager.FindByEmailAsync(email);
             var role = User.FindFirstValue(ClaimTypes.Role);
 
-            if (string.IsNullOrEmpty(userId) || string.IsNullOrEmpty(role)) return Unauthorized();
+            if (user == null || string.IsNullOrEmpty(role)) return Unauthorized();
 
-            var result = await _bookingService.CancelBookingAsync(id, userId, role);
+            var result = await _bookingService.CancelBookingAsync(id, user.Id, role);
 
-            if (result)
-                return Ok(new { message = "Đã hủy lịch chụp thành công." });
+            if (result) return Ok(new { message = "Đã hủy lịch chụp thành công." });
 
-            return BadRequest(new { message = "Không thể hủy đơn hàng này (Sai quyền hoặc đơn đã hoàn thành)." });
+            return BadRequest(new { message = "Không thể hủy đơn hàng này." });
         }
     }
 }

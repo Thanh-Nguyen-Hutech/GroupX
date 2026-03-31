@@ -26,7 +26,6 @@ namespace PhotoWebappAPI.Controllers
             _photoService = photoService;
         }
 
-        // CHỈ THỢ MỚI ĐƯỢC ĐĂNG BÀI
         [HttpPost("multiple")]
         [Authorize(Roles = "Photographer")]
         public async Task<IActionResult> CreatePost([FromForm] CreatePostDto dto)
@@ -106,7 +105,7 @@ namespace PhotoWebappAPI.Controllers
                 Title = p.Title,
                 Description = p.Description,
                 CreatedAt = p.CreatedAt,
-                PhotographerId = p.PhotographerId, // ✅ Map ID
+                PhotographerId = p.PhotographerId,
                 PhotographerName = p.Photographer.FullName,
                 PhotographerAvatar = p.Photographer.Avatar,
                 Photos = p.Photos.Select(img => new PhotoDto { Id = img.Id, Url = img.Url }).ToList(),
@@ -116,7 +115,6 @@ namespace PhotoWebappAPI.Controllers
 
             return Ok(posts);
         }
-
 
         [HttpGet("{id}")]
         [AllowAnonymous]
@@ -169,24 +167,28 @@ namespace PhotoWebappAPI.Controllers
             return Ok(new { message = "Cập nhật bài đăng thành công!" });
         }
 
+        // 🌟 ĐÃ FIX: Logic đặc quyền cho Admin khi xóa bài
         [HttpDelete("{id}")]
-        [Authorize(Roles = "Photographer")]
+        [Authorize(Roles = "Photographer, Admin")]
         public async Task<IActionResult> DeletePost(int id)
         {
             var email = User.FindFirstValue(ClaimTypes.Email);
             var user = await _userManager.FindByEmailAsync(email);
 
-            // 1. Lấy bài đăng bao gồm cả Photos, Likes và Comments
+            // 1. Kiểm tra xem người đang thực hiện có phải Admin không
+            var isAdmin = await _userManager.IsInRoleAsync(user, "Admin");
+
             var post = await _context.Posts
                 .Include(p => p.Photos)
-                .Include(p => p.Likes)      // <--- Thêm Include này
-                .Include(p => p.Comments)   // <--- Thêm Include này
+                .Include(p => p.Likes)
+                .Include(p => p.Comments)
                 .FirstOrDefaultAsync(p => p.Id == id);
 
             if (post == null) return NotFound();
-            if (post.PhotographerId != user.Id) return Forbid();
 
-            // 2. Xóa dữ liệu liên quan trong Database
+            // 2. NẾU KHÔNG PHẢI ADMIN VÀ CŨNG KHÔNG PHẢI TÁC GIẢ BÀI VIẾT => Cấm xóa
+            if (!isAdmin && post.PhotographerId != user.Id)
+                return Forbid("Bạn không có quyền xóa bài viết này.");
 
             // Xóa ảnh (cả file vật lý và bản ghi DB)
             if (post.Photos != null && post.Photos.Any())
@@ -213,15 +215,13 @@ namespace PhotoWebappAPI.Controllers
                 _context.Comments.RemoveRange(post.Comments);
             }
 
-            // 3. Sau khi đã "dọn dẹp" sạch sẽ các bảng liên quan, mới xóa Post
+            // Xóa Post
             _context.Posts.Remove(post);
-
             await _context.SaveChangesAsync();
 
             return Ok(new { message = "Đã xóa bài đăng thành công!" });
         }
 
-        // ✅ CẢ KHÁCH VÀ THỢ ĐỀU LIKE ĐƯỢC
         [HttpPost("{id}/like")]
         [Authorize]
         public async Task<IActionResult> ToggleLike(int id)
@@ -250,7 +250,6 @@ namespace PhotoWebappAPI.Controllers
             }
         }
 
-        // ✅ CẢ KHÁCH VÀ THỢ ĐỀU CMT ĐƯỢC
         [HttpPost("{id}/comment")]
         [Authorize]
         public async Task<IActionResult> AddComment(int id, [FromBody] CommentDto dto)
@@ -273,7 +272,7 @@ namespace PhotoWebappAPI.Controllers
         [Authorize(Roles = "Photographer")]
         public async Task<IActionResult> GetMyPosts()
         {
-            var userId = User.FindFirstValue(ClaimTypes.NameIdentifier); // Lấy ID chuẩn từ Token
+            var userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
             var query = _context.Posts
                 .Include(p => p.Photos)
                 .Include(p => p.Likes)

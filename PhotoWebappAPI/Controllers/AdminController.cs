@@ -11,7 +11,7 @@ namespace PhotoWebappAPI.Controllers
 {
     [Route("api/[controller]")]
     [ApiController]
-    [Authorize(Roles = "Admin")]
+    [Authorize(Roles = "Admin")] // Bảo vệ toàn bộ Controller, chỉ Admin mới được vào
     public class AdminController : ControllerBase
     {
         private readonly ApplicationDbContext _context;
@@ -25,6 +25,9 @@ namespace PhotoWebappAPI.Controllers
             _userManager = userManager;
         }
 
+        // ==========================================
+        // THỐNG KÊ (Dùng cho AdminDashboard)
+        // ==========================================
         [HttpGet("stats")]
         public async Task<IActionResult> GetStats()
         {
@@ -42,6 +45,9 @@ namespace PhotoWebappAPI.Controllers
             });
         }
 
+        // ==========================================
+        // QUẢN LÝ NGƯỜI DÙNG (Dùng cho ManageUsers)
+        // ==========================================
         [HttpGet("users")]
         public async Task<IActionResult> GetAllUsers()
         {
@@ -64,7 +70,6 @@ namespace PhotoWebappAPI.Controllers
             return Ok(result);
         }
 
-        // Đổi tên route thành toggle-lock cho khớp Frontend
         [HttpPost("users/{userId}/toggle-lock")]
         public async Task<IActionResult> ToggleLockUser(string userId)
         {
@@ -93,6 +98,55 @@ namespace PhotoWebappAPI.Controllers
                 });
             }
             return BadRequest("Lỗi khi cập nhật trạng thái.");
+        }
+
+        [HttpPost("users/{id}/reset-password")]
+        public async Task<IActionResult> ResetPassword(string id)
+        {
+            var user = await _userManager.FindByIdAsync(id);
+            if (user == null) return NotFound(new { message = "Không tìm thấy người dùng." });
+
+            // Xóa mật khẩu cũ
+            var removeResult = await _userManager.RemovePasswordAsync(user);
+            if (!removeResult.Succeeded) return BadRequest(new { message = "Lỗi khi xóa mật khẩu cũ." });
+
+            // Đặt lại mật khẩu mới
+            var addResult = await _userManager.AddPasswordAsync(user, "Fotoz@123");
+            if (!addResult.Succeeded) return BadRequest(new { message = "Lỗi khi đặt mật khẩu mới." });
+
+            return Ok(new { message = "Đã đặt lại mật khẩu về mặc định: Fotoz@123" });
+        }
+
+        // ==========================================
+        // QUẢN LÝ BÁO CÁO LỖI (Dùng cho ManageReports)
+        // ==========================================
+
+        [HttpGet("reports")]
+        public async Task<IActionResult> GetAllReports()
+        {
+            /* 💡 Nếu bạn chưa code xong bảng Reports trong CSDL, 
+               đoạn Mock Data này sẽ giúp giao diện React hiển thị ngay lập tức để bạn test.
+               Khi nào làm xong DB thì bạn thay bằng: _context.Reports.ToListAsync();
+            */
+            var mockReports = new[] {
+                new { id = 1, userName = "Phạm Nam", userEmail = "nam@example.com", title = "Lỗi không tải được ảnh", content = "Tôi bấm đăng bài nhưng ảnh cứ quay vòng vòng không lên được.", isResolved = false, createdAt = DateTime.UtcNow.AddDays(-1) },
+                new { id = 2, userName = "Sau Bá", userEmail = "thanhkl1z@gmail.com", title = "Trang cá nhân bị đen", content = "Sau khi tôi cập nhật bio thì trang profile thỉnh thoảng bị đen màn hình.", isResolved = true, createdAt = DateTime.UtcNow.AddDays(-2) },
+                new { id = 3, userName = "Khách Hàng VIP", userEmail = "khach@gmail.com", title = "Nút đặt lịch bị đơ", content = "Tôi điền xong form bấm gửi thì không thấy phản hồi gì.", isResolved = false, createdAt = DateTime.UtcNow.AddHours(-5) }
+            };
+
+            return Ok(mockReports);
+        }
+
+        [HttpPut("reports/{id}/resolve")]
+        public async Task<IActionResult> ResolveReport(int id)
+        {
+            // Code xử lý khi có DB:
+            // var report = await _context.Reports.FindAsync(id);
+            // if (report == null) return NotFound("Không tìm thấy báo cáo.");
+            // report.IsResolved = true;
+            // await _context.SaveChangesAsync();
+
+            return Ok(new { message = "Đã đánh dấu xử lý lỗi thành công!" });
         }
     }
 }
