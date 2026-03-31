@@ -8,8 +8,11 @@
         public string? Description { get; set; }
         public DateTime CreatedAt { get; set; }
 
+        public string PhotographerId { get; set; }
         // Mình lấy luôn FullName của người thợ để hiển thị cho đẹp
         public string? PhotographerName { get; set; }
+
+        public string? PhotographerAvatar { get; set; }
 
         // Danh sách các link ảnh đính kèm
         public List<PhotoDto> Photos { get; set; } = new List<PhotoDto>();

@@ -91,6 +91,11 @@ namespace PhotoWebappAPI.Controllers
                 query = query.Where(p => p.Photographer.FullName.Contains(filter.PhotographerName));
             }
 
+            if (!string.IsNullOrEmpty(filter.PhotographerId))
+            {
+                query = query.Where(p => p.PhotographerId == filter.PhotographerId);
+            }
+
             query = filter.SortBy == "oldest"
                 ? query.OrderBy(p => p.CreatedAt)
                 : query.OrderByDescending(p => p.CreatedAt);
@@ -101,7 +106,9 @@ namespace PhotoWebappAPI.Controllers
                 Title = p.Title,
                 Description = p.Description,
                 CreatedAt = p.CreatedAt,
+                PhotographerId = p.PhotographerId, // ✅ Map ID
                 PhotographerName = p.Photographer.FullName,
+                PhotographerAvatar = p.Photographer.Avatar,
                 Photos = p.Photos.Select(img => new PhotoDto { Id = img.Id, Url = img.Url }).ToList(),
                 LikesCount = p.Likes.Count,
                 Comments = p.Comments.Select(c => new CommentResponseDto { Id = c.Id, Author = "User", Text = c.Text }).ToList()
@@ -109,6 +116,7 @@ namespace PhotoWebappAPI.Controllers
 
             return Ok(posts);
         }
+
 
         [HttpGet("{id}")]
         [AllowAnonymous]
@@ -259,6 +267,29 @@ namespace PhotoWebappAPI.Controllers
             await _context.SaveChangesAsync();
 
             return Ok(new { id = comment.Id, author = user.FullName, text = comment.Text });
+        }
+
+        [HttpGet("my-posts")]
+        [Authorize(Roles = "Photographer")]
+        public async Task<IActionResult> GetMyPosts()
+        {
+            var userId = User.FindFirstValue(ClaimTypes.NameIdentifier); // Lấy ID chuẩn từ Token
+            var query = _context.Posts
+                .Include(p => p.Photos)
+                .Include(p => p.Likes)
+                .Where(p => p.PhotographerId == userId)
+                .OrderByDescending(p => p.CreatedAt);
+
+            var posts = await query.Select(p => new
+            {
+                Id = p.Id,
+                Title = p.Title,
+                CreatedAt = p.CreatedAt,
+                Photos = p.Photos.Select(img => new { Url = img.Url }).ToList(),
+                LikesCount = p.Likes.Count
+            }).ToListAsync();
+
+            return Ok(posts);
         }
     }
 }

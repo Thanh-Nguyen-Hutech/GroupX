@@ -11,6 +11,9 @@ namespace PhotoWebappAPI.Models
         public string? FacebookUrl { get; set; }
         public bool IsActive { get; set; } = true; // Mặc định tài khoản mới là Active
 
+        public decimal BasePrice { get; set; }
+        public string? Concepts { get; set; }
+
         // Navigation properties
         public ICollection<Booking> CustomerBookings { get; set; } = new List<Booking>();
         public ICollection<Booking> PhotographerBookings { get; set; } = new List<Booking>();

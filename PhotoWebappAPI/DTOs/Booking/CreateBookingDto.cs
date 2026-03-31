@@ -23,5 +23,7 @@ namespace PhotoWebappAPI.DTOs.Booking
 
         [Required]
         public string Location { get; set; } = string.Empty;
+
+        public string? PhotographerId { get; set; }
     }
 }

@@ -12,7 +12,7 @@ namespace PhotoWebappAPI.Services.Implementations
         private readonly IBookingRepository _bookingRepo;
         private readonly UserManager<AppUser> _userManager;
 
-        public BookingService(IBookingRepository bookingRepo, UserManager<AppUser> userManager) // 🌟 Inject vào đây
+        public BookingService(IBookingRepository bookingRepo, UserManager<AppUser> userManager)
         {
             _bookingRepo = bookingRepo;
             _userManager = userManager;
@@ -20,16 +20,16 @@ namespace PhotoWebappAPI.Services.Implementations
 
         public async Task<IEnumerable<Booking>> GetRequestsFeedAsync()
         {
-            // Các logic nghiệp vụ thêm nếu cần (VD: lọc theo ngày)
             return await _bookingRepo.GetAllPendingAsync();
         }
 
+        // 🌟 ĐÃ NÂNG CẤP: Lưu PhotographerId vào Database nếu có
         public async Task CreateBookingRequestAsync(string customerId, CreateBookingDto dto)
         {
-            // Mapping từ DTO sang Entity
             var newBooking = new Booking
             {
                 CustomerId = customerId,
+                PhotographerId = dto.PhotographerId, // ✅ Lưu ID thợ nếu đặt trực tiếp
                 Title = dto.Title,
                 Content = dto.Content,
                 ServiceType = dto.ServiceType,
@@ -39,7 +39,7 @@ namespace PhotoWebappAPI.Services.Implementations
                 MaxPrice = dto.MaxPrice,
                 ShootingDate = dto.ShootingDate,
                 Location = dto.Location,
-                Status = "Pending" // Mặc định đang tìm thợ
+                Status = "Pending"
             };
 
             await _bookingRepo.CreateAsync(newBooking);
@@ -54,21 +54,21 @@ namespace PhotoWebappAPI.Services.Implementations
                 return false;
 
             booking.PhotographerId = photographerId;
-            booking.Status = "Accepted"; // ✅ ĐỔI TỪ Confirmed THÀNH Accepted
+            booking.Status = "Accepted";
 
             return await _bookingRepo.SaveChangesAsync();
         }
 
+        // 🌟 ĐÃ NÂNG CẤP: Trả về Số điện thoại của thợ cho khách hàng
         public async Task<IEnumerable<object>> GetUserBookingHistoryAsync(string userId, string role)
         {
-            // ✅ Gọi qua Repository
             var bookings = await _bookingRepo.GetHistoryByUserIdAsync(userId, role);
 
-            // ✅ Thực hiện Mapping tại Service
             var result = bookings.Select(b => new {
                 id = b.Id,
                 customerName = b.Customer?.FullName,
                 photographerName = b.Photographer?.FullName,
+                phoneNumber = b.Photographer?.PhoneNumber, // ✅ Lấy SĐT của thợ ảnh
                 title = b.Title,
                 bookingDate = b.ShootingDate,
                 location = b.Location,
@@ -90,7 +90,6 @@ namespace PhotoWebappAPI.Services.Implementations
             if (role == "Customer" && booking.CustomerId != userId) return false;
             if (role == "Photographer" && booking.PhotographerId != userId) return false;
 
-            // ✅ Đảm bảo chỉ những đơn CHƯA hoàn thành mới được hủy
             if (booking.Status == "Completed" || booking.Status == "Cancelled" || booking.Status == "Rejected")
                 return false;
 
@@ -98,43 +97,35 @@ namespace PhotoWebappAPI.Services.Implementations
             return await _bookingRepo.SaveChangesAsync();
         }
 
-        // ✅ ĐÃ SỬA: Dùng _bookingRepo thay cho _context
         public async Task<bool> RejectBookingAsync(int bookingId, string photographerId)
         {
-            // Tìm đơn đang ở trạng thái Pending thông qua Repo
             var booking = await _bookingRepo.GetByIdAsync(bookingId);
 
             if (booking == null || booking.Status != "Pending")
                 return false;
 
-            // Chuyển thành Rejected
             booking.Status = "Rejected";
 
-            // Lưu thay đổi thông qua Repo
             await _bookingRepo.SaveChangesAsync();
             return true;
         }
 
-        // ✅ ĐÃ SỬA: Dùng _bookingRepo thay cho _context
         public async Task<bool> CompleteBookingAsync(int bookingId)
         {
             var booking = await _bookingRepo.GetByIdAsync(bookingId);
 
-            // ✅ NÂNG CẤP: Chấp nhận cả "Accepted" (mới) và "Confirmed" (cũ)
             if (booking == null || (booking.Status != "Accepted" && booking.Status != "Confirmed"))
                 return false;
 
-            // Chuyển thành Completed
             booking.Status = "Completed";
 
             await _bookingRepo.SaveChangesAsync();
             return true;
         }
 
-        // Đừng quên inject UserManager<AppUser> vào Constructor của Service nếu chưa có
+        // 🌟 ĐÃ NÂNG CẤP: Map chuẩn dữ liệu ra các thẻ PhotographerCard
         public async Task<IEnumerable<object>> GetPhotographersAsync()
         {
-            // Lấy danh sách user thuộc Role Photographer
             var photographers = await _userManager.GetUsersInRoleAsync("Photographer");
 
             return photographers.Select(p => new
@@ -142,9 +133,12 @@ namespace PhotoWebappAPI.Services.Implementations
                 id = p.Id,
                 fullName = p.FullName,
                 avatar = p.Avatar,
-                location = p.Address, // Map Address sang location cho khớp Frontend
-                basePrice = 1000000, // Bạn có thể thêm cột này vào DB sau, tạm thời để mặc định
-                concepts = new[] { "Cá nhân", "Cổ trang" }, // Tạm thời để mảng mẫu
+                location = p.Address,
+                phoneNumber = p.PhoneNumber,
+                basePrice = p.BasePrice,
+                concepts = string.IsNullOrEmpty(p.Concepts)
+                            ? Array.Empty<string>()
+                            : p.Concepts.Split(',', StringSplitOptions.RemoveEmptyEntries).Select(c => c.Trim()),
                 rating = 5.0
             });
         }
