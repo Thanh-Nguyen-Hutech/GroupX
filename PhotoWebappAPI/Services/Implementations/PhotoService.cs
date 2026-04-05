@@ -49,5 +49,28 @@ namespace PhotoWebappAPI.Services.Implementations
             var deleteParams = new DeletionParams(publicId);
             return await _cloudinary.DestroyAsync(deleteParams);
         }
+
+        // Hàm này chuyên dùng để up ảnh gốc, ảnh HD giao cho khách, không cắt xén!
+        public async Task<ImageUploadResult> AddGalleryPhotoAsync(IFormFile file)
+        {
+            var uploadResult = new ImageUploadResult();
+
+            if (file.Length > 0)
+            {
+                using var stream = file.OpenReadStream();
+                var uploadParams = new ImageUploadParams
+                {
+                    File = new FileDescription(file.FileName, stream),
+                    // Điểm khác biệt lớn nhất: KHÔNG CÓ Transformation cắt ảnh!
+                    // Giữ nguyên chất lượng (quality: auto)
+                    Transformation = new Transformation().Quality("auto:good"),
+                    Folder = "PhotoApp_ClientGalleries" // Lưu vào một folder riêng biệt
+                };
+
+                uploadResult = await _cloudinary.UploadAsync(uploadParams);
+            }
+
+            return uploadResult;
+        }
     }
 }

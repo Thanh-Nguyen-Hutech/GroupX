@@ -27,5 +27,15 @@ namespace PhotoWebappAPI.Models
         public string Status { get; set; } = "Pending"; // Pending, Confirmed, Completed, Cancelled
 
         public Review? Review { get; set; }
+        public string? GalleryPassword { get; set; } // Mật khẩu xem ảnh
+    }
+
+    public class DeliveredPhoto
+    {
+        public int Id { get; set; }
+        public int BookingId { get; set; }
+        public Booking Booking { get; set; }
+        public string ImageUrl { get; set; }
+        public DateTime UploadedAt { get; set; } = DateTime.Now;
     }
 }

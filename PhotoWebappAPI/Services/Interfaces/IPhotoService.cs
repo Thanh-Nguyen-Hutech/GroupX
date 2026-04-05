@@ -9,5 +9,6 @@ namespace PhotoWebappAPI.Services.Interfaces
 
         // Hàm xóa ảnh trên Cloudinary dựa vào ID của ảnh
         Task<DeletionResult> DeletePhotoAsync(string publicId);
+        Task<ImageUploadResult> AddGalleryPhotoAsync(IFormFile file);
     }
 }

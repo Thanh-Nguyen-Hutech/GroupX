@@ -2,7 +2,6 @@ using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
-using Microsoft.OpenApi;
 using Microsoft.OpenApi.Models;
 using PhotoWebappAPI.Data;
 using PhotoWebappAPI.Models;
@@ -10,6 +9,7 @@ using PhotoWebappAPI.Repositories.Implementations;
 using PhotoWebappAPI.Repositories.Interfaces;
 using PhotoWebappAPI.Services.Implementations;
 using PhotoWebappAPI.Services.Interfaces;
+using PhotoWebappAPI.Hubs; // 🌟 1. IMPORT THƯ MỤC HUBS ĐỂ TÌM THẤY CHATHUB
 using System.Text;
 using System.Text.Json.Serialization;
 
@@ -19,9 +19,9 @@ var builder = WebApplication.CreateBuilder(args);
 builder.Services.AddDbContext<ApplicationDbContext>(options =>
     options.UseSqlServer(builder.Configuration.GetConnectionString("DefaultConnection")));
 
-// 2. Cấu hình Identity (Chỉ gọi 1 LẦN DUY NHẤT)
+// 2. Cấu hình Identity 
 builder.Services.AddIdentityCore<AppUser>()
-    .AddRoles<IdentityRole>() // Phải có dòng này để phân quyền Admin/Customer
+    .AddRoles<IdentityRole>()
     .AddEntityFrameworkStores<ApplicationDbContext>()
     .AddDefaultTokenProviders();
 
@@ -31,7 +31,7 @@ builder.Services.AddAuthentication(options =>
 {
     options.DefaultAuthenticateScheme = JwtBearerDefaults.AuthenticationScheme;
     options.DefaultChallengeScheme = JwtBearerDefaults.AuthenticationScheme;
-    options.DefaultScheme = JwtBearerDefaults.AuthenticationScheme; // Thêm dòng này để ưu tiên JWT tuyệt đối
+    options.DefaultScheme = JwtBearerDefaults.AuthenticationScheme;
 }).AddJwtBearer(options =>
 {
     options.TokenValidationParameters = new TokenValidationParameters
@@ -55,15 +55,13 @@ builder.Services.AddScoped<IPhotoService, PhotoService>();
 
 builder.Services.AddControllers().AddJsonOptions(x =>
 {
-    // Lệnh này giúp tự động chặt đứt các vòng lặp dữ liệu vô hạn
     x.JsonSerializerOptions.ReferenceHandler = ReferenceHandler.IgnoreCycles;
 });
+
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen(c =>
 {
     c.SwaggerDoc("v1", new OpenApiInfo { Title = "Photography API", Version = "v1" });
-
-    // Cấu hình nút Authorize (Ổ khóa) cho Swagger
     c.AddSecurityDefinition("Bearer", new OpenApiSecurityScheme
     {
         Description = "Nhập 'Bearer' [khoảng trắng] và chuỗi Token của bạn vào ô bên dưới.\r\n\r\nVí dụ: 'Bearer eyJhbGci...'",
@@ -72,7 +70,6 @@ builder.Services.AddSwaggerGen(c =>
         Type = SecuritySchemeType.ApiKey,
         Scheme = "Bearer"
     });
-
     c.AddSecurityRequirement(new OpenApiSecurityRequirement()
     {
         {
@@ -92,13 +89,17 @@ builder.Services.AddSwaggerGen(c =>
     });
 });
 
+// 🌟 2. ĐĂNG KÝ DỊCH VỤ CHAT SIGNALR
+builder.Services.AddSignalR();
+
 builder.Services.AddCors(options =>
 {
     options.AddPolicy("AllowReactApp", builder =>
     {
-        builder.WithOrigins("http://localhost:5173") // Cho phép React truy cập
+        builder.WithOrigins("http://localhost:5173")
                .AllowAnyHeader()
-               .AllowAnyMethod();
+               .AllowAnyMethod()
+               .AllowCredentials(); // 🌟 3. BẮT BUỘC PHẢI CÓ DÒNG NÀY THÌ WEBSOCKET MỚI CHẠY ĐƯỢC
     });
 });
 
@@ -110,14 +111,17 @@ if (app.Environment.IsDevelopment())
     app.UseSwagger();
     app.UseSwaggerUI();
 }
-
 app.UseHttpsRedirection();
 app.UseCors("AllowReactApp");
-app.UseAuthentication(); // Xác thực danh tính (Ai đây?) - Luôn nằm trước
-app.UseAuthorization();  // Phân quyền (Được làm gì?)
+app.UseAuthentication();
+app.UseAuthorization();
+
 app.MapControllers();
 
-// 6. Seed Data (Chỉ gọi 1 LẦN DUY NHẤT trước khi chạy app)
+// 🌟 4. MỞ ĐƯỜNG DẪN KẾT NỐI CHO FORM CHAT REACT
+app.MapHub<ChatHub>("/chatHub");
+
+// 6. Seed Data 
 using (var scope = app.Services.CreateScope())
 {
     var services = scope.ServiceProvider;

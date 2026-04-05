@@ -18,6 +18,9 @@ namespace PhotoWebappAPI.Data
         public DbSet<Like> Likes { get; set; }
         public DbSet<Comment> Comments { get; set; }
         public DbSet<Report> Reports { get; set; }
+        public DbSet<Payment> Payments { get; set; }
+        // Thêm dòng này vào bên trong class ApplicationDbContext
+        public DbSet<DeliveredPhoto> DeliveredPhotos { get; set; }
 
         protected override void OnModelCreating(ModelBuilder builder)
         {
