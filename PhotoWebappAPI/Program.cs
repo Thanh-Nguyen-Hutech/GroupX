@@ -1,31 +1,43 @@
 using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.AspNetCore.Http.Features;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
 using Microsoft.OpenApi.Models;
 using PhotoWebappAPI.Data;
+using PhotoWebappAPI.Hubs;
 using PhotoWebappAPI.Models;
 using PhotoWebappAPI.Repositories.Implementations;
 using PhotoWebappAPI.Repositories.Interfaces;
 using PhotoWebappAPI.Services.Implementations;
 using PhotoWebappAPI.Services.Interfaces;
-using PhotoWebappAPI.Hubs; // 🌟 1. IMPORT THƯ MỤC HUBS ĐỂ TÌM THẤY CHATHUB
+using PhotoWebappAPI.Services; // 🌟 ĐỐI CHIẾU: Thêm using để nhận diện class BookingCleanupService
 using System.Text;
 using System.Text.Json.Serialization;
 
 var builder = WebApplication.CreateBuilder(args);
 
-// 1. Cấu hình Database Context
+// Cấu hình Kết nối Cơ sở dữ liệu SQL Server
 builder.Services.AddDbContext<ApplicationDbContext>(options =>
     options.UseSqlServer(builder.Configuration.GetConnectionString("DefaultConnection")));
 
-// 2. Cấu hình Identity 
+// Cấu hình giới hạn dung lượng upload ảnh gốc dung lượng cao (100MB)
+builder.WebHost.ConfigureKestrel(serverOptions =>
+{
+    serverOptions.Limits.MaxRequestBodySize = 104857600;
+});
+builder.Services.Configure<FormOptions>(options =>
+{
+    options.MultipartBodyLengthLimit = 104857600;
+});
+
+// Cấu hình Identity Core với AppUser của dự án FOTOZ
 builder.Services.AddIdentityCore<AppUser>()
     .AddRoles<IdentityRole>()
     .AddEntityFrameworkStores<ApplicationDbContext>()
     .AddDefaultTokenProviders();
 
-// 3. Cấu hình JWT Authentication
+// Cấu hình Xác thực JWT Token bảo mật
 var jwtSettings = builder.Configuration.GetSection("JwtSettings");
 builder.Services.AddAuthentication(options =>
 {
@@ -46,13 +58,17 @@ builder.Services.AddAuthentication(options =>
     };
 });
 
-// 4. Đăng ký Dependency Injection (DI)
+// ĐĂNG KÝ CÁC LAYER BUSINESS LOGIC (REPOSITORIES & SERVICES)
 builder.Services.AddScoped<IBookingRepository, BookingRepository>();
 builder.Services.AddScoped<IBookingService, BookingService>();
 builder.Services.AddScoped<IAuthService, AuthService>();
 builder.Services.Configure<PhotoWebappAPI.Helpers.CloudinarySettings>(builder.Configuration.GetSection("CloudinarySettings"));
 builder.Services.AddScoped<IPhotoService, PhotoService>();
 
+// 🌟 ĐÃ THÊM: Đăng ký dịch vụ Background Worker tự động hủy lịch ngâm quá 3 ngày
+builder.Services.AddHostedService<BookingCleanupService>();
+
+// Cấu hình Controllers và xử lý bỏ qua vòng lặp JSON (Ignore Cycles) khi kéo dữ liệu quan hệ
 builder.Services.AddControllers().AddJsonOptions(x =>
 {
     x.JsonSerializerOptions.ReferenceHandler = ReferenceHandler.IgnoreCycles;
@@ -89,9 +105,8 @@ builder.Services.AddSwaggerGen(c =>
     });
 });
 
-// 🌟 2. ĐĂNG KÝ DỊCH VỤ CHAT SIGNALR
+// ĐĂNG KÝ DỊCH VỤ CHAT TRỰC TIẾP SIGNALR
 builder.Services.AddSignalR();
-
 builder.Services.AddCors(options =>
 {
     options.AddPolicy("AllowReactApp", builder =>
@@ -99,29 +114,27 @@ builder.Services.AddCors(options =>
         builder.WithOrigins("http://localhost:5173")
                .AllowAnyHeader()
                .AllowAnyMethod()
-               .AllowCredentials(); // 🌟 3. BẮT BUỘC PHẢI CÓ DÒNG NÀY THÌ WEBSOCKET MỚI CHẠY ĐƯỢC
+               .AllowCredentials();
     });
 });
 
 var app = builder.Build();
 
-// 5. Cấu hình Middleware HTTP pipeline
+// Cấu hình Middleware HTTP pipeline
 if (app.Environment.IsDevelopment())
 {
     app.UseSwagger();
     app.UseSwaggerUI();
 }
+
 app.UseHttpsRedirection();
 app.UseCors("AllowReactApp");
 app.UseAuthentication();
 app.UseAuthorization();
-
 app.MapControllers();
+app.MapHub<ChatHub>("/chatHub"); // Map cổng kết nối thời gian thực SignalR
 
-// 🌟 4. MỞ ĐƯỜNG DẪN KẾT NỐI CHO FORM CHAT REACT
-app.MapHub<ChatHub>("/chatHub");
-
-// 6. Seed Data 
+// Thực thi Seed Data mồi ban đầu cho hệ thống
 using (var scope = app.Services.CreateScope())
 {
     var services = scope.ServiceProvider;

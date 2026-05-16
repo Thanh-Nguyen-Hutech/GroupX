@@ -68,6 +68,8 @@ namespace PhotoWebappAPI.Controllers
             return Ok(new { message = "Đăng bài Portfolio thành công rực rỡ!", postId = newPost.Id });
         }
 
+
+
         [HttpGet]
         [AllowAnonymous]
         public async Task<IActionResult> GetAllPosts([FromQuery] PostFilterDto filter)
@@ -136,7 +138,10 @@ namespace PhotoWebappAPI.Controllers
                 Title = post.Title,
                 Description = post.Description,
                 CreatedAt = post.CreatedAt,
+                // 🌟 BỔ SUNG DÒNG NÀY: Gửi ID về để React có thể navigate sang Profile
+                PhotographerId = post.PhotographerId,
                 PhotographerName = post.Photographer.FullName,
+                PhotographerAvatar = post.Photographer.Avatar, // Gửi thêm avatar nếu cần hiện ở header post
                 Photos = post.Photos.Select(img => new PhotoDto { Id = img.Id, Url = img.Url }).ToList(),
                 LikesCount = post.Likes.Count,
                 Comments = post.Comments.Select(c => new CommentResponseDto

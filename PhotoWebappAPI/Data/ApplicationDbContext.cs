@@ -19,6 +19,7 @@ namespace PhotoWebappAPI.Data
         public DbSet<Comment> Comments { get; set; }
         public DbSet<Report> Reports { get; set; }
         public DbSet<Payment> Payments { get; set; }
+        public DbSet<ResetRequest> ResetRequests { get; set; }
         // Thêm dòng này vào bên trong class ApplicationDbContext
         public DbSet<DeliveredPhoto> DeliveredPhotos { get; set; }
 

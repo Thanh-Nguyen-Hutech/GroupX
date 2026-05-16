@@ -6,10 +6,9 @@ namespace PhotoWebappAPI.Repositories.Interfaces
     {
         Task<IEnumerable<Booking>> GetAllPendingAsync();
         Task<IEnumerable<Booking>> GetAllAsync();
-        Task<Booking?> GetByIdAsync(int id); // Thêm dòng này
+        Task<Booking?> GetByIdAsync(int id); 
         Task CreateAsync(Booking booking);
-        Task<bool> SaveChangesAsync(); // Thêm dòng này
+        Task<bool> SaveChangesAsync();
         Task<IEnumerable<Booking>> GetHistoryByUserIdAsync(string userId, string role);
-
     }
 }

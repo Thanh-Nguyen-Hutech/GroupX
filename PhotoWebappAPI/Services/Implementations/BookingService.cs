@@ -45,22 +45,18 @@ namespace PhotoWebappAPI.Services.Implementations
             await _bookingRepo.SaveChangesAsync();
         }
 
-        // 🌟 BẢN VÁ VÀNG: Bỏ qua kiểm tra ID cũ, ép nhận đơn và ghi đè ID mới vào!
         public async Task<bool> AcceptBookingAsync(int bookingId, string photographerId)
         {
             var booking = await _bookingRepo.GetByIdAsync(bookingId);
 
-            // Kiểm tra null và so sánh Status không phân biệt chữ hoa/chữ thường
             if (booking == null || booking.Status?.ToLower() != "pending")
                 return false;
 
-            // 🌟 XÓA BỎ rào cản kiểm tra ID gắt gao. 
-            // Cứ người nào bấm Nhận, ta sẽ ghi đè ID xịn của người đó vào Database để dọn rác dữ liệu!
             booking.PhotographerId = photographerId;
             booking.Status = "Accepted";
 
             await _bookingRepo.SaveChangesAsync();
-            return true; // Ép trả về True luôn để vượt qua mọi validation
+            return true;
         }
 
         public async Task<IEnumerable<object>> GetUserBookingHistoryAsync(string userId, string role)
@@ -79,7 +75,9 @@ namespace PhotoWebappAPI.Services.Implementations
                 notes = b.Content,
                 status = b.Status,
                 minPrice = b.MinPrice,
-                maxPrice = b.MaxPrice
+                maxPrice = b.MaxPrice,
+                // 🌟 ĐÃ FIX: Thêm dòng này để trả về Mật khẩu Kho Ảnh cho Frontend lưu lại
+                galleryPassword = b.GalleryPassword
             });
 
             return result;
@@ -101,7 +99,6 @@ namespace PhotoWebappAPI.Services.Implementations
             return true;
         }
 
-        // 🌟 NÂNG CẤP LUÔN TỪ CHỐI ĐỂ KHÔNG BỊ KẸT
         public async Task<bool> RejectBookingAsync(int bookingId, string photographerId)
         {
             var booking = await _bookingRepo.GetByIdAsync(bookingId);

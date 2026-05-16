@@ -15,7 +15,7 @@ namespace PhotoWebappAPI.Models
 
         public string TransactionNo { get; set; } // Mã giao dịch trả về từ VNPay (vnp_TransactionNo)
         public string OrderInfo { get; set; } // Nội dung thanh toán
-        public double Amount { get; set; } // Số tiền cọc
+        public decimal Amount { get; set; } // Số tiền cọc
         public string PaymentMethod { get; set; } = "VNPay";
 
         public DateTime PaymentDate { get; set; } = DateTime.Now;

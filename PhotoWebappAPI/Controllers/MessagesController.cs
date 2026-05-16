@@ -20,7 +20,6 @@ namespace PhotoWebappAPI.Controllers
         [HttpGet("{bookingId}")]
         public async Task<IActionResult> GetChatHistory(int bookingId)
         {
-            // Lấy toàn bộ tin nhắn của Booking này, Join với bảng User để lấy Tên
             var messages = await _context.Messages
                 .Include(m => m.Sender)
                 .Where(m => m.BookingId == bookingId)

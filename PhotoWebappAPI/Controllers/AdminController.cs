@@ -33,18 +33,15 @@ namespace PhotoWebappAPI.Controllers
         {
             try
             {
-                // 1. Đếm người dùng theo phân quyền (Identity)
                 var customers = await _userManager.GetUsersInRoleAsync("Customer");
                 var photographers = await _userManager.GetUsersInRoleAsync("Photographer");
 
                 int totalUsers = customers.Count;
                 int totalPhotographers = photographers.Count;
 
-                // 2. Đếm tổng số bài đăng và lịch chụp
                 int totalPosts = await _context.Posts.CountAsync();
                 int totalBookings = await _context.Bookings.CountAsync();
 
-                // 3. Tính toán Tỉ lệ chốt lịch (Lịch đã Completed / Tổng số lịch)
                 int completedBookings = await _context.Bookings
                     .Where(b => b.Status.ToLower() == "completed")
                     .CountAsync();
@@ -53,7 +50,6 @@ namespace PhotoWebappAPI.Controllers
                     ? $"{(completedBookings * 100.0 / totalBookings):F1}%"
                     : "0%";
 
-                // 4. Tính Điểm đánh giá trung bình từ bảng Reviews (Nếu có)
                 double avgRatingValue = 0;
                 if (await _context.Reviews.AnyAsync())
                 {
@@ -61,14 +57,11 @@ namespace PhotoWebappAPI.Controllers
                 }
                 string averageRating = avgRatingValue > 0 ? $"{avgRatingValue:F1}/5.0" : "Chưa có đánh giá";
 
-                // 5. Tình trạng cổng thanh toán 
                 bool hasPaymentErrors = await _context.Payments.AnyAsync(p => p.Status == "Failed");
                 string paymentStatus = hasPaymentErrors ? "Có giao dịch lỗi" : "Hoạt động ổn định";
 
-                // 6. Tăng trưởng khách hàng (Mock tạm một con số đẹp)
                 string customerGrowth = "+15.2%";
 
-                // TRẢ VỀ JSON KHỚP 100% VỚI CÁI FORM REACT
                 return Ok(new
                 {
                     totalUsers = totalUsers,
@@ -118,7 +111,6 @@ namespace PhotoWebappAPI.Controllers
             var user = await _userManager.FindByIdAsync(userId);
             if (user == null) return NotFound("Không tìm thấy người dùng.");
 
-            // Không cho phép Admin tự khóa chính mình
             var currentUserId = User.FindFirstValue(ClaimTypes.NameIdentifier);
             if (userId == currentUserId) return BadRequest("Bạn không thể tự khóa chính mình.");
 
@@ -150,19 +142,61 @@ namespace PhotoWebappAPI.Controllers
 
             // Xóa mật khẩu cũ
             var removeResult = await _userManager.RemovePasswordAsync(user);
-            if (!removeResult.Succeeded) return BadRequest(new { message = "Lỗi khi xóa mật khẩu cũ." });
+            // Bỏ qua lỗi nếu User hiện tại đang không có Password
+            if (!removeResult.Succeeded && removeResult.Errors.Any(e => e.Code != "PasswordMismatch"))
+                return BadRequest(new { message = "Lỗi khi xóa mật khẩu cũ." });
 
             // Đặt lại mật khẩu mới
             var addResult = await _userManager.AddPasswordAsync(user, "Fotoz@123");
             if (!addResult.Succeeded) return BadRequest(new { message = "Lỗi khi đặt mật khẩu mới." });
 
+            // 🌟 ĐÃ THÊM: Xóa yêu cầu reset mật khẩu của User này (để thông báo biến mất khỏi màn hình React)
+            var pendingRequest = await _context.ResetRequests
+                .FirstOrDefaultAsync(r => r.Email == user.Email && r.IsProcessed == false);
+
+            if (pendingRequest != null)
+            {
+                pendingRequest.IsProcessed = true;
+                await _context.SaveChangesAsync();
+            }
+
             return Ok(new { message = "Đã đặt lại mật khẩu về mặc định: Fotoz@123" });
+        }
+
+        // ==========================================
+        // YÊU CẦU QUÊN MẬT KHẨU (Dùng cho Notification ManageUsers)
+        // ==========================================
+        [HttpGet("reset-requests")]
+        // [Authorize(Roles = "Admin")]
+        public async Task<IActionResult> GetPendingResetRequests()
+        {
+            try
+            {
+                // Lấy toàn bộ bản ghi có trường IsProcessed bằng false
+                var requests = await _context.ResetRequests
+                    .Where(r => r.IsProcessed == false)
+                    .OrderByDescending(r => r.RequestedAt)
+                    .ToListAsync(); // Lấy danh sách thô về trước để tránh lỗi Linq format ngày tháng
+
+                // Định dạng dữ liệu trả về khớp hoàn toàn với React
+                var result = requests.Select(r => new {
+                    id = r.Id,
+                    email = r.Email,
+                    // Hiển thị ngày giờ rõ ràng theo định dạng Việt Nam
+                    time = r.RequestedAt.ToString("dd/MM/yyyy HH:mm")
+                }).ToList();
+
+                return Ok(result);
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(500, new { message = "Lỗi hệ thống khi tải yêu cầu.", error = ex.Message });
+            }
         }
 
         // ==========================================
         // QUẢN LÝ BÁO CÁO LỖI (Dùng cho ManageReports)
         // ==========================================
-
         [HttpGet("reports")]
         public async Task<IActionResult> GetAllReports()
         {
@@ -193,6 +227,40 @@ namespace PhotoWebappAPI.Controllers
             await _context.SaveChangesAsync();
 
             return Ok(new { message = "Đã đánh dấu xử lý lỗi thành công!" });
+        }
+
+        [HttpPost("users/reset-by-email")]
+        // [Authorize(Roles = "Admin")]
+        public async Task<IActionResult> ResetPasswordByEmail([FromBody] ForgotPasswordDto dto)
+        {
+            if (string.IsNullOrEmpty(dto.Email)) return BadRequest(new { message = "Email không được trống." });
+
+            var user = await _userManager.FindByEmailAsync(dto.Email);
+            if (user == null) return NotFound(new { message = "Không tìm thấy người dùng sở hữu Email này." });
+
+            // 1. Xóa mật khẩu cũ
+            var removeResult = await _userManager.RemovePasswordAsync(user);
+            if (!removeResult.Succeeded && removeResult.Errors.Any(e => e.Code != "PasswordMismatch"))
+            {
+                return BadRequest(new { message = "Lỗi khi xóa mật khẩu cũ hệ thống." });
+            }
+
+            // 2. Ép mật khẩu mới
+            var addResult = await _userManager.AddPasswordAsync(user, "Fotoz@123");
+            if (!addResult.Succeeded) return BadRequest(new { message = "Lỗi khi cập nhật mật khẩu mới." });
+
+            // 3. Đánh dấu hoàn tất toàn bộ yêu cầu của Email này trong DB
+            var pendingRequests = await _context.ResetRequests
+                .Where(r => r.Email.ToLower() == dto.Email.ToLower() && r.IsProcessed == false)
+                .ToListAsync();
+
+            foreach (var req in pendingRequests)
+            {
+                req.IsProcessed = true;
+            }
+            await _context.SaveChangesAsync();
+
+            return Ok(new { message = $"Đã đặt lại mật khẩu về mặc định thành công." });
         }
     }
 }

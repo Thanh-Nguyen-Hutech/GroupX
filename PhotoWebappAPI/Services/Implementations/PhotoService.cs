@@ -22,6 +22,7 @@ namespace PhotoWebappAPI.Services.Implementations
             _cloudinary = new Cloudinary(acc);
         }
 
+        // 🌟 ĐÃ FIX: Hàm up ảnh cho bài đăng (Portfolio) không còn bị crop 500x500
         public async Task<ImageUploadResult> AddPhotoAsync(IFormFile file)
         {
             var uploadResult = new ImageUploadResult();
@@ -32,8 +33,8 @@ namespace PhotoWebappAPI.Services.Implementations
                 var uploadParams = new ImageUploadParams
                 {
                     File = new FileDescription(file.FileName, stream),
-                    // Điểm ăn tiền: Tự động cắt ảnh vuông 500x500, tự nhận diện khuôn mặt để không bị cắt lẹm!
-                    Transformation = new Transformation().Height(500).Width(500).Crop("fill").Gravity("face"),
+                    // Chỉ tối ưu dung lượng và định dạng, giữ nguyên kích thước và tỷ lệ gốc!
+                    Transformation = new Transformation().Quality("auto").FetchFormat("auto"),
                     Folder = "PhotoApp_Portfolios" // Tự tạo folder trên mây để dễ quản lý
                 };
 
@@ -61,8 +62,7 @@ namespace PhotoWebappAPI.Services.Implementations
                 var uploadParams = new ImageUploadParams
                 {
                     File = new FileDescription(file.FileName, stream),
-                    // Điểm khác biệt lớn nhất: KHÔNG CÓ Transformation cắt ảnh!
-                    // Giữ nguyên chất lượng (quality: auto)
+                    // Giữ nguyên chất lượng (quality: auto:good) cho ảnh HD
                     Transformation = new Transformation().Quality("auto:good"),
                     Folder = "PhotoApp_ClientGalleries" // Lưu vào một folder riêng biệt
                 };

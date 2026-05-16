@@ -17,6 +17,7 @@ namespace PhotoWebappAPI.DTOs.Booking
 
         public decimal MinPrice { get; set; }
         public decimal MaxPrice { get; set; }
+        public decimal TotalPrice { get; set; }
 
         [Required]
         public DateTime ShootingDate { get; set; }

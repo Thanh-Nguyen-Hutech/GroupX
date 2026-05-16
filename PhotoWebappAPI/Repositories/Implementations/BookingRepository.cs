@@ -16,7 +16,7 @@ namespace PhotoWebappAPI.Repositories.Implementations
         public async Task<IEnumerable<Booking>> GetAllPendingAsync()
         {
             return await _context.Bookings
-                .Include(b => b.Customer) // Join bảng để lấy info người đăng
+                .Include(b => b.Customer) 
                 .Where(b => b.Status == "Pending")
                 .OrderByDescending(b => b.ShootingDate)
                 .ToListAsync();
@@ -40,7 +40,6 @@ namespace PhotoWebappAPI.Repositories.Implementations
 
         public async Task<IEnumerable<Booking>> GetAllAsync()
         {
-            // Lấy hết, bao gồm cả thông tin khách và thợ để hiển thị lịch sử cho đẹp
             return await _context.Bookings
                 .Include(b => b.Customer)
                 .Include(b => b.Photographer)

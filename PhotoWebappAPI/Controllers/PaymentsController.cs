@@ -1,10 +1,9 @@
 ﻿using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
-using PhotoWebappAPI.Data; // ĐẢM BẢO ĐÚNG NAMESPACE CỦA BẠN
-using PhotoWebappAPI.Models; // ĐẢM BẢO ĐÚNG NAMESPACE CỦA BẠN
+using PhotoWebappAPI.Data;
+using PhotoWebappAPI.Models;
 using System.Globalization;
-using System.Net;
 using System.Security.Cryptography;
 using System.Text;
 
@@ -18,7 +17,9 @@ namespace PhotoWebappAPI.Controllers
         private readonly IConfiguration _configuration;
         private readonly ApplicationDbContext _context;
 
-        public PaymentsController(IConfiguration configuration, ApplicationDbContext context)
+        public PaymentsController(
+            IConfiguration configuration,
+            ApplicationDbContext context)
         {
             _configuration = configuration;
             _context = context;
@@ -27,113 +28,307 @@ namespace PhotoWebappAPI.Controllers
         public class PaymentRequestDto
         {
             public int BookingId { get; set; }
-            public double Amount { get; set; }
         }
 
         [HttpPost("create-url")]
-        public IActionResult CreatePaymentUrl([FromBody] PaymentRequestDto dto)
+        public async Task<IActionResult> CreatePaymentUrl(
+            [FromBody] PaymentRequestDto dto)
         {
-            string vnp_Returnurl = _configuration["VnPay:ReturnUrl"]?.Trim();
-            string vnp_Url = _configuration["VnPay:BaseUrl"]?.Trim();
-            string vnp_TmnCode = _configuration["VnPay:TmnCode"]?.Trim();
-            string vnp_HashSecret = _configuration["VnPay:HashSecret"]?.Trim();
-
-            // 🌟 1. Ép kiểu Amount về long (số nguyên) để tránh lỗi số thập phân của double
-            long amount = (long)(dto.Amount * 100);
-
-            var vnp_Params = new SortedList<string, string>(new VnPayCompare());
-            vnp_Params.Add("vnp_Amount", amount.ToString());
-            vnp_Params.Add("vnp_Command", "pay");
-            vnp_Params.Add("vnp_CreateDate", DateTime.Now.ToString("yyyyMMddHHmmss"));
-            vnp_Params.Add("vnp_CurrCode", "VND");
-            vnp_Params.Add("vnp_IpAddr", "127.0.0.1");
-            vnp_Params.Add("vnp_Locale", "vn");
-            vnp_Params.Add("vnp_OrderInfo", "Thanh toan don hang " + dto.BookingId);
-            vnp_Params.Add("vnp_OrderType", "other");
-            vnp_Params.Add("vnp_ReturnUrl", vnp_Returnurl);
-            vnp_Params.Add("vnp_TmnCode", vnp_TmnCode);
-            vnp_Params.Add("vnp_TxnRef", dto.BookingId.ToString() + "_" + DateTime.Now.Ticks.ToString());
-            vnp_Params.Add("vnp_Version", "2.1.0");
-
-            // 🌟 2. Chuẩn hóa thuật toán mã hóa URL theo đúng Sample Code của VNPay
-            StringBuilder data = new StringBuilder();
-            foreach (KeyValuePair<string, string> kv in vnp_Params)
+            try
             {
-                if (!string.IsNullOrEmpty(kv.Value))
+                string vnp_Returnurl =
+                    _configuration["VnPay:ReturnUrl"]?.Trim();
+
+                string vnp_Url =
+                    _configuration["VnPay:BaseUrl"]?.Trim();
+
+                string vnp_TmnCode =
+                    _configuration["VnPay:TmnCode"]?.Trim();
+
+                string vnp_HashSecret =
+                    _configuration["VnPay:HashSecret"]?.Trim();
+
+                string frontendUrl =
+                    _configuration["FrontendUrl"]?.Trim();
+
+                if (string.IsNullOrEmpty(vnp_Returnurl) ||
+                    string.IsNullOrEmpty(vnp_Url) ||
+                    string.IsNullOrEmpty(vnp_TmnCode) ||
+                    string.IsNullOrEmpty(vnp_HashSecret))
                 {
-                    data.Append(WebUtility.UrlEncode(kv.Key) + "=" + WebUtility.UrlEncode(kv.Value) + "&");
+                    return BadRequest("VNPay configuration missing");
                 }
-            }
-            string queryString = data.ToString();
 
-            // Xóa dấu '&' thừa ở cuối cùng
-            if (queryString.Length > 0)
+                var booking = await _context.Bookings
+                    .FirstOrDefaultAsync(x => x.Id == dto.BookingId);
+
+                if (booking == null)
+                {
+                    return NotFound("Booking not found");
+                }
+
+                if (booking.Status == "Paid")
+                {
+                    return BadRequest("Booking already paid");
+                }
+
+                decimal bookingAmount = Convert.ToDecimal(booking.TotalPrice);
+
+                long amount = (long)(bookingAmount * 100);
+
+                TimeZoneInfo vnTimeZone =
+                    TimeZoneInfo.FindSystemTimeZoneById(
+                        "SE Asia Standard Time"
+                    );
+
+                DateTime vnTime =
+                    TimeZoneInfo.ConvertTimeFromUtc(
+                        DateTime.UtcNow,
+                        vnTimeZone
+                    );
+
+                string txnRef =
+                    $"{booking.Id}_{DateTime.Now.Ticks}";
+
+                string ipAddress =
+                    HttpContext.Connection.RemoteIpAddress?
+                    .MapToIPv4()
+                    .ToString() ?? "127.0.0.1";
+
+                var vnp_Params =
+                    new SortedList<string, string>(
+                        new VnPayCompare()
+                    );
+
+                vnp_Params.Add("vnp_Version", "2.1.0");
+                vnp_Params.Add("vnp_Command", "pay");
+                vnp_Params.Add("vnp_TmnCode", vnp_TmnCode);
+                vnp_Params.Add("vnp_Amount", amount.ToString());
+                vnp_Params.Add("vnp_CreateDate",
+                    vnTime.ToString("yyyyMMddHHmmss"));
+                vnp_Params.Add("vnp_CurrCode", "VND");
+                vnp_Params.Add("vnp_IpAddr", ipAddress);
+                vnp_Params.Add("vnp_Locale", "vn");
+                vnp_Params.Add("vnp_OrderInfo",
+                    $"Thanh toan don hang {booking.Id}");
+                vnp_Params.Add("vnp_OrderType", "other");
+                vnp_Params.Add("vnp_ReturnUrl", vnp_Returnurl);
+                vnp_Params.Add("vnp_TxnRef", txnRef);
+
+                // Expire after 15 minutes
+                vnp_Params.Add(
+                    "vnp_ExpireDate",
+                    vnTime.AddMinutes(15)
+                        .ToString("yyyyMMddHHmmss")
+                );
+
+                StringBuilder hashData = new StringBuilder();
+                StringBuilder query = new StringBuilder();
+
+                foreach (KeyValuePair<string, string> kv in vnp_Params)
+                {
+                    if (!string.IsNullOrEmpty(kv.Value))
+                    {
+                        // HASH DATA KHÔNG ENCODE
+                        hashData.Append(
+                            kv.Key + "=" + kv.Value + "&"
+                        );
+
+                        // QUERY URL PHẢI ENCODE
+                        query.Append(
+                            Uri.EscapeDataString(kv.Key) + "=" +
+                            Uri.EscapeDataString(kv.Value) + "&"
+                        );
+                    }
+                }
+
+                string queryUrl = query.ToString();
+                string hashDataString = hashData.ToString();
+
+                if (queryUrl.Length > 0)
+                {
+                    queryUrl =
+                        queryUrl.Remove(queryUrl.Length - 1, 1);
+                }
+
+                if (hashDataString.Length > 0)
+                {
+                    hashDataString =
+                        hashDataString.Remove(
+                            hashDataString.Length - 1,
+                            1
+                        );
+                }
+
+                string vnp_SecureHash =
+                    HmacSHA512(
+                        vnp_HashSecret,
+                        hashDataString
+                    );
+
+                string paymentUrl =
+                    $"{vnp_Url}?{queryUrl}" +
+                    $"&vnp_SecureHash={vnp_SecureHash}";
+
+                // Lưu payment pending trước
+                var payment = new Payment
+                {
+                    BookingId = booking.Id,
+                    TransactionNo = txnRef,
+                    OrderInfo = $"Thanh toan don hang {booking.Id}",
+                    Amount = bookingAmount,
+                    PaymentMethod = "VNPay",
+                    Status = "Pending",
+                    PaymentDate = vnTime
+                };
+
+                _context.Payments.Add(payment);
+
+                await _context.SaveChangesAsync();
+
+                return Ok(new
+                {
+                    url = paymentUrl
+                });
+            }
+            catch (Exception ex)
             {
-                queryString = queryString.Remove(queryString.Length - 1, 1);
+                return StatusCode(500, new
+                {
+                    message = ex.Message
+                });
             }
-
-            var vnp_SecureHash = HmacSHA512(vnp_HashSecret, queryString);
-            string paymentUrl = $"{vnp_Url}?{queryString}&vnp_SecureHash={vnp_SecureHash}";
-
-            return Ok(new { url = paymentUrl });
         }
 
         [HttpGet("vnpay-return")]
         [AllowAnonymous]
         public async Task<IActionResult> PaymentReturn()
         {
-            var vnpayData = Request.Query;
-            var vnp_SecureHash = vnpayData["vnp_SecureHash"];
-            var vnp_HashSecret = _configuration["VnPay:HashSecret"]?.Trim();
-
-            var vnp_Params = new SortedList<string, string>(new VnPayCompare());
-            foreach (var kv in vnpayData)
+            try
             {
-                if (!string.IsNullOrEmpty(kv.Value) && kv.Key.StartsWith("vnp_") && kv.Key != "vnp_SecureHash" && kv.Key != "vnp_SecureHashType")
+                var vnpayData = Request.Query;
+
+                string vnp_HashSecret =
+                    _configuration["VnPay:HashSecret"]?.Trim();
+
+                string frontendUrl =
+                    _configuration["FrontendUrl"]?.Trim();
+
+                string vnp_SecureHash =
+                    vnpayData["vnp_SecureHash"];
+
+                var vnp_Params =
+                    new SortedList<string, string>(
+                        new VnPayCompare()
+                    );
+
+                foreach (var kv in vnpayData)
                 {
-                    vnp_Params.Add(kv.Key, kv.Value);
+                    if (!string.IsNullOrEmpty(kv.Value)
+                        && kv.Key.StartsWith("vnp_")
+                        && kv.Key != "vnp_SecureHash"
+                        && kv.Key != "vnp_SecureHashType")
+                    {
+                        vnp_Params.Add(kv.Key, kv.Value);
+                    }
                 }
-            }
 
-            StringBuilder data = new StringBuilder();
-            foreach (KeyValuePair<string, string> kv in vnp_Params)
-            {
-                if (!string.IsNullOrEmpty(kv.Value))
+                StringBuilder hashData =
+                    new StringBuilder();
+
+                foreach (KeyValuePair<string, string> kv in vnp_Params)
                 {
-                    data.Append(WebUtility.UrlEncode(kv.Key) + "=" + WebUtility.UrlEncode(kv.Value) + "&");
+                    if (!string.IsNullOrEmpty(kv.Value))
+                    {
+                        // KHÔNG ENCODE HASH DATA
+                        hashData.Append(
+                            kv.Key + "=" + kv.Value + "&"
+                        );
+                    }
                 }
-            }
-            string queryString = data.ToString();
-            if (queryString.Length > 0)
-            {
-                queryString = queryString.Remove(queryString.Length - 1, 1);
-            }
 
-            var checkSignature = HmacSHA512(vnp_HashSecret, queryString);
+                string hashDataString =
+                    hashData.ToString();
 
-            if (checkSignature.Equals(vnp_SecureHash, StringComparison.InvariantCultureIgnoreCase))
-            {
-                var responseCode = vnpayData["vnp_ResponseCode"].ToString();
-                var txnRef = vnpayData["vnp_TxnRef"].ToString();
-                var amountString = vnpayData["vnp_Amount"].ToString();
+                if (hashDataString.Length > 0)
+                {
+                    hashDataString =
+                        hashDataString.Remove(
+                            hashDataString.Length - 1,
+                            1
+                        );
+                }
 
-                int bookingId = int.Parse(txnRef.Split('_')[0]);
+                string checkSignature =
+                    HmacSHA512(
+                        vnp_HashSecret,
+                        hashDataString
+                    );
+
+                if (!checkSignature.Equals(
+                    vnp_SecureHash,
+                    StringComparison.InvariantCultureIgnoreCase))
+                {
+                    return Redirect(
+                        $"{frontendUrl}/payment-result" +
+                        $"?success=false" +
+                        $"&message=invalid-signature"
+                    );
+                }
+
+                string responseCode =
+                    vnpayData["vnp_ResponseCode"];
+
+                string txnRef =
+                    vnpayData["vnp_TxnRef"];
+
+                string amountString =
+                    vnpayData["vnp_Amount"];
+
+                string transactionNo =
+                    vnpayData["vnp_TransactionNo"];
+
+                int bookingId =
+                    int.Parse(txnRef.Split('_')[0]);
+
+                decimal amount =
+                    decimal.Parse(amountString) / 100;
+
+                var payment = await _context.Payments
+                    .FirstOrDefaultAsync(
+                        p => p.TransactionNo == txnRef
+                    );
+
+                if (payment == null)
+                {
+                    return Redirect(
+                        $"{frontendUrl}/payment-result" +
+                        $"?success=false" +
+                        $"&message=payment-not-found"
+                    );
+                }
+
+                // Đã xử lý trước đó
+                if (payment.Status == "Success")
+                {
+                    return Redirect(
+                        $"{frontendUrl}/payment-result" +
+                        $"?success=true" +
+                        $"&bookingId={bookingId}"
+                    );
+                }
 
                 if (responseCode == "00")
                 {
-                    var payment = new Payment
-                    {
-                        BookingId = bookingId,
-                        TransactionNo = vnpayData["vnp_TransactionNo"],
-                        OrderInfo = vnpayData["vnp_OrderInfo"],
-                        Amount = double.Parse(amountString) / 100,
-                        PaymentMethod = "VNPay",
-                        Status = "Success",
-                        PaymentDate = DateTime.Now
-                    };
-                    _context.Payments.Add(payment);
+                    payment.Status = "Success";
+                    payment.TransactionNo = transactionNo;
+                    payment.Amount = amount;
+                    payment.PaymentDate = DateTime.Now;
 
-                    var booking = await _context.Bookings.FindAsync(bookingId);
+                    var booking =
+                        await _context.Bookings
+                            .FindAsync(bookingId);
+
                     if (booking != null)
                     {
                         booking.Status = "Paid";
@@ -141,36 +336,63 @@ namespace PhotoWebappAPI.Controllers
 
                     await _context.SaveChangesAsync();
 
-                    return Ok(new { success = true, message = "Thanh toán thành công!", bookingId = bookingId });
+                    return Redirect(
+                        $"{frontendUrl}/payment-result" +
+                        $"?success=true" +
+                        $"&bookingId={bookingId}"
+                    );
                 }
                 else
                 {
-                    return BadRequest(new { success = false, message = "Thanh toán thất bại hoặc đã bị hủy." });
+                    payment.Status = "Failed";
+
+                    await _context.SaveChangesAsync();
+
+                    return Redirect(
+                        $"{frontendUrl}/payment-result" +
+                        $"?success=false"
+                    );
                 }
             }
-            else
+            catch (Exception ex)
             {
-                return BadRequest(new { success = false, message = "Lỗi xác thực chữ ký VNPay" });
+                return BadRequest(new
+                {
+                    message = ex.Message
+                });
             }
         }
 
-        private string HmacSHA512(string key, string inputData)
+        private string HmacSHA512(
+            string key,
+            string inputData)
         {
-            var hash = new StringBuilder();
-            byte[] keyBytes = Encoding.UTF8.GetBytes(key);
-            byte[] inputBytes = Encoding.UTF8.GetBytes(inputData);
-            using (var hmac = new HMACSHA512(keyBytes))
+            byte[] keyBytes =
+                Encoding.UTF8.GetBytes(key);
+
+            byte[] inputBytes =
+                Encoding.UTF8.GetBytes(inputData);
+
+            using (var hmac =
+                   new HMACSHA512(keyBytes))
             {
-                byte[] hashValue = hmac.ComputeHash(inputBytes);
+                byte[] hashValue =
+                    hmac.ComputeHash(inputBytes);
+
+                StringBuilder hash =
+                    new StringBuilder();
+
                 foreach (var theByte in hashValue)
                 {
-                    hash.Append(theByte.ToString("x2"));
+                    hash.Append(
+                        theByte.ToString("x2")
+                    );
                 }
+
+                return hash.ToString();
             }
-            return hash.ToString();
         }
 
-        // 🌟 3. Thuật toán so xếp (Sorting) chuẩn 100% theo SDK VNPay
         private class VnPayCompare : IComparer<string>
         {
             public int Compare(string x, string y)
@@ -178,8 +400,15 @@ namespace PhotoWebappAPI.Controllers
                 if (x == y) return 0;
                 if (x == null) return -1;
                 if (y == null) return 1;
-                var vnpCompare = CompareInfo.GetCompareInfo("en-US");
-                return vnpCompare.Compare(x, y, CompareOptions.Ordinal);
+
+                var compare =
+                    CompareInfo.GetCompareInfo("en-US");
+
+                return compare.Compare(
+                    x,
+                    y,
+                    CompareOptions.Ordinal
+                );
             }
         }
     }

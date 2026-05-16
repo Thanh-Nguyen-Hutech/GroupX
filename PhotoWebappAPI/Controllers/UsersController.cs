@@ -110,6 +110,17 @@ namespace PhotoWebappAPI.Controllers
                             : user.Concepts.Split(',', StringSplitOptions.RemoveEmptyEntries).Select(c => c.Trim())
             });
         }
+
+        [HttpGet("by-name/{fullName}")]
+        public async Task<IActionResult> GetUserByName(string fullName)
+        {
+            var user = await _userManager.Users
+                .FirstOrDefaultAsync(u => u.FullName == fullName);
+
+            if (user == null) return NotFound("Không tìm thấy nhiếp ảnh gia này");
+
+            return Ok(user);
+        }
     }
 
     // 🌟 Lớp DTO được cấu hình để nhận FormData từ React

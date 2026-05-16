@@ -28,6 +28,8 @@ namespace PhotoWebappAPI.Models
 
         public Review? Review { get; set; }
         public string? GalleryPassword { get; set; } // Mật khẩu xem ảnh
+        public DateTime CreatedAt { get; set; } = DateTime.Now;
+        public decimal TotalPrice { get; set; }
     }
 
     public class DeliveredPhoto
